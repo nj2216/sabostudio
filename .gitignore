@@ -25,3 +25,6 @@ yarn-error.log*
 
 # Test / coverage outputs
 coverage/
+
+# Local SQLite development database
+dev.db
