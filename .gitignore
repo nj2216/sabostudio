@@ -28,3 +28,5 @@ coverage/
 
 # Local SQLite development database
 dev.db
+dev.db-wal
+dev.db-shm
