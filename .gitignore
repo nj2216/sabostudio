@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+frontend/dist/
+frontend/.vite/
+
+# Environment secrets — never commit real .env files
+.env
+.env.local
+.env.*.local
+
+# Vercel local dev
+.vercel/
+
+# Editor / OS artefacts
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test / coverage outputs
+coverage/
