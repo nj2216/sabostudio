@@ -71,7 +71,7 @@ sabostudio/
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 18.11.0+ (required for `--watch` flag used in `npm run dev`)
 - A [Supabase](https://supabase.com) project (free tier is fine)
 
 ### 1. Clone & install

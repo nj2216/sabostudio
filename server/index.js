@@ -2,11 +2,24 @@
 // Express server — serves the API routes and (in production) the frontend static build.
 
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { createClient } from '@supabase/supabase-js';
 import { nanoid } from 'nanoid';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import 'dotenv/config';
+
+// ---------------------------------------------------------------------------
+// Startup validation
+// ---------------------------------------------------------------------------
+
+const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'];
+const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+if (missing.length > 0) {
+  console.error(`Missing required environment variables: ${missing.join(', ')}`);
+  console.error('Copy .env.example to .env and fill in the values.');
+  process.exit(1);
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -20,6 +33,19 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// ---------------------------------------------------------------------------
+// Rate limiting
+// ---------------------------------------------------------------------------
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api', apiLimiter);
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -239,7 +265,7 @@ app.get('/api/rooms/:code', async (req, res) => {
 if (process.env.NODE_ENV === 'production') {
   const distPath = join(__dirname, '../frontend/dist');
   app.use(express.static(distPath));
-  app.get('*', (_req, res) => {
+  app.get(/^(?!\/api).*/, (_req, res) => {
     res.sendFile(join(distPath, 'index.html'));
   });
 }
