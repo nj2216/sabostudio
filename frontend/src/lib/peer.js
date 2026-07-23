@@ -109,7 +109,10 @@ export function connectToHost(peer, hostPeerId, onMessage) {
   return new Promise((resolve, reject) => {
     const conn = peer.connect(hostPeerId, { reliable: true });
 
-    conn.on('open', () => resolve(conn));
+    conn.on('open', () => {
+      clearTimeout(timeout);
+      resolve(conn);
+    });
 
     conn.on('data', (raw) => {
       let msg;
@@ -131,8 +134,6 @@ export function connectToHost(peer, hostPeerId, onMessage) {
         reject(new Error('Timed out connecting to host peer'));
       }
     }, 10_000);
-
-    conn.on('open', () => clearTimeout(timeout));
   });
 }
 
