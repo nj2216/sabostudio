@@ -37,7 +37,7 @@ const POLL_INTERVAL = 3000;
  *   hostPeerId?: string,   // Only for guests
  * }} props
  */
-export default function Lobby({ code, peer, playerId, playerName, isHost, hostPeerId }) {
+export default function Lobby({ code, peer, playerId, playerName, isHost, hostPeerId, onGameStart }) {
   const [players, setPlayers] = useState([{ id: playerId, name: playerName, isHost }]);
   const [gameStarting, setGameStarting] = useState(false);
   const [peerConnected, setPeerConnected] = useState(isHost); // Host is "always connected" as self
@@ -94,7 +94,17 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
           }
           if (msg.type === 'game-start') {
             setGameStarting(true);
-            // TODO: route to actual game screen in a follow-up PR.
+            // Transition to game screen as guest
+            if (onGameStart) {
+              onGameStart({
+                peer,
+                players: msg.payload.players || playersRef.current,
+                isHost: false,
+                broadcast: null,
+                hostConn: conn,
+                myPeerId: peer.id,
+              });
+            }
           }
         });
 
@@ -112,7 +122,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     return () => {
       conn?.close();
     };
-  }, [isHost, peer, hostPeerId, playerName]);
+  }, [isHost, peer, hostPeerId, playerName, onGameStart]);
 
   // ── REST API polling (resilience fallback) ─────────────────────────────────
   useEffect(() => {
@@ -144,9 +154,19 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   function handleStartGame() {
     setGameStarting(true);
     if (broadcastRef.current) {
-      broadcastRef.current({ type: 'game-start', payload: {} });
+      broadcastRef.current({ type: 'game-start', payload: { players: playersRef.current } });
     }
-    // TODO: navigate to minigame screen in a follow-up PR.
+    // Transition to game screen
+    if (onGameStart) {
+      onGameStart({
+        peer,
+        players: playersRef.current,
+        isHost: true,
+        broadcast: broadcastRef.current,
+        hostConn: null,
+        myPeerId: peer.id,
+      });
+    }
   }
 
   // ── Copy room code to clipboard ───────────────────────────────────────────
@@ -168,9 +188,8 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
           🎬 Game Starting…
         </h1>
         <p className="text-gray-400 mt-4">
-          Minigames coming in a follow-up update — stay tuned!
+          Loading minigames...
         </p>
-        {/* TODO: route to minigame screen */}
       </div>
     );
   }
