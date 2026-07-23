@@ -14,7 +14,7 @@ No download, no account — just share a room code and start playing.
 - [Getting Started (Local Dev)](#getting-started-local-dev)
 - [Environment Variables](#environment-variables)
 - [Supabase Setup](#supabase-setup)
-- [Deployment (Vercel)](#deployment-vercel)
+- [Deployment](#deployment)
 - [How It Works](#how-it-works)
 - [Roadmap / TODOs](#roadmap--todos)
 
@@ -26,16 +26,15 @@ No download, no account — just share a room code and start playing.
 |---|---|---|
 | **Frontend** | React 19 + Vite + Tailwind CSS | UI, lobby screens, minigames (follow-up), sabotage overlays |
 | **P2P Networking** | PeerJS (WebRTC) | Real-time swap events, sabotage triggers, player-list sync — host peer is authoritative |
-| **Serverless Backend** | Vercel Serverless Functions (Node.js, `api/`) | Room creation, player registration, room metadata lookup only — **no game logic** |
+| **Backend** | Express (Node.js, `server/`) | Room creation, player registration, room metadata lookup only — **no game logic** |
 | **Database** | Supabase (Postgres) | Room registry, player registry, optional post-game stats |
-| **Hosting** | Vercel (single project) | Frontend static build + `api/` functions deployed together |
 
 ### P2P Design
 
 - When a host creates a room, their **PeerJS Peer ID** is stored in Supabase.
 - When a guest joins, they retrieve the **host's Peer ID** from the backend and open a direct WebRTC data channel to the host via PeerJS.
 - The **host** is the authoritative peer: it maintains the player list and broadcasts state updates (`player-list-update`, `game-start`, swap timers, sabotage events) to all connected peers over WebRTC data channels.
-- The **serverless backend** is only hit for room creation/lookup/join — all real-time game logic flows P2P.
+- The **Express server** is only hit for room creation/lookup/join — all real-time game logic flows P2P.
 
 > ⚠️ **Host migration is not implemented in v1.** If the host disconnects, the game session ends. This is a known limitation to be addressed in a follow-up issue.
 
@@ -45,12 +44,8 @@ No download, no account — just share a room code and start playing.
 
 ```
 sabostudio/
-├── api/                        # Vercel Serverless Functions (backend)
-│   ├── package.json            # API dependencies (supabase-js, nanoid)
-│   ├── rooms/
-│   │   ├── create.js           # POST /api/rooms/create
-│   │   ├── join.js             # POST /api/rooms/join
-│   │   └── [code].js           # GET  /api/rooms/:code
+├── server/
+│   └── index.js                # Express server — API routes + serves frontend in production
 ├── frontend/                   # Vite + React app
 │   ├── src/
 │   │   ├── lib/
@@ -62,11 +57,11 @@ sabostudio/
 │   │   ├── main.jsx
 │   │   └── index.css           # Tailwind base styles
 │   ├── package.json
-│   ├── vite.config.js
+│   ├── vite.config.js          # Proxies /api to Express in dev mode
 │   ├── tailwind.config.js
 │   └── postcss.config.js
-├── vercel.json                 # Vercel build + routing config
-├── .env.example                # Required environment variables (copy to .env.local)
+├── package.json                # Root: scripts + server dependencies
+├── .env.example                # Required environment variables (copy to .env)
 └── README.md
 ```
 
@@ -76,9 +71,8 @@ sabostudio/
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 18.11.0+ (required for `--watch` flag used in `npm run dev`)
 - A [Supabase](https://supabase.com) project (free tier is fine)
-- [Vercel CLI](https://vercel.com/docs/cli) (`npm i -g vercel`) for running serverless functions locally
 
 ### 1. Clone & install
 
@@ -86,60 +80,60 @@ sabostudio/
 git clone https://github.com/nj2216/sabostudio.git
 cd sabostudio
 
-# Install API dependencies
-cd api && npm install && cd ..
+# Install root (server) dependencies
+npm install
 
 # Install frontend dependencies
-cd frontend && npm install && cd ..
+npm install --prefix frontend
 ```
 
 ### 2. Configure environment variables
 
 ```bash
-cp .env.example .env.local
-# Edit .env.local and fill in your Supabase credentials
+cp .env.example .env
+# Edit .env and fill in your Supabase credentials
 ```
 
-### 3. Run locally
-
-**Option A — Full stack with Vercel CLI (recommended):**
+### 3. Run locally (dev)
 
 ```bash
-# From the repo root — this starts both the frontend dev server and the
-# serverless functions at http://localhost:3000
-vercel dev
-```
-
-**Option B — Frontend only (no API):**
-
-```bash
-cd frontend
 npm run dev
-# Vite dev server starts at http://localhost:5173
-# API calls will fail unless proxied separately
 ```
 
-### 4. Build
+This starts two processes via `concurrently`:
+- **Express server** on `http://localhost:3000` (API routes)
+- **Vite dev server** on `http://localhost:5173` (frontend, proxies `/api` → Express)
+
+Open `http://localhost:5173` in your browser.
+
+### 4. Build for production
 
 ```bash
-cd frontend
 npm run build
-# Output in frontend/dist/
+# Builds the frontend into frontend/dist/
+```
+
+### 5. Run in production
+
+```bash
+npm start
+# Express serves both the API and the built frontend at http://localhost:3000
 ```
 
 ---
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in the values:
+Copy `.env.example` to `.env` and fill in the values:
 
 | Variable | Description |
 |---|---|
 | `SUPABASE_URL` | Your Supabase project URL (e.g. `https://xxxx.supabase.co`) |
 | `SUPABASE_ANON_KEY` | Supabase anonymous/public key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key — used **server-side only** in `api/` functions |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key — used **server-side only** in `server/` |
+| `PORT` | Port for the Express server (defaults to `3000`) |
 
-> **Never commit `.env.local` or any file containing real keys.** Only `.env.example` (with placeholder values) should be committed.
+> **Never commit `.env` or any file containing real keys.** Only `.env.example` (with placeholder values) should be committed.
 
 ---
 
@@ -184,7 +178,7 @@ CREATE INDEX IF NOT EXISTS idx_players_room_code ON players (room_code);
 
 ### Row-Level Security (RLS)
 
-The serverless functions use the **service role key**, which bypasses RLS.  
+The server uses the **service role key**, which bypasses RLS.  
 If you want to restrict direct client access to tables (recommended for production), enable RLS and add appropriate policies:
 
 ```sql
@@ -197,12 +191,15 @@ CREATE POLICY "rooms_read" ON rooms FOR SELECT USING (true);
 
 ---
 
-## Deployment (Vercel)
+## Deployment
 
-1. Push to GitHub and import the repo in [vercel.com/new](https://vercel.com/new).
-2. Set the environment variables in the Vercel project settings (same as `.env.example`).
-3. Vercel will detect `vercel.json` and build the frontend + deploy `api/` functions automatically.
-4. The `api/rooms/create`, `api/rooms/join`, and `api/rooms/[code]` endpoints will be live at `https://your-app.vercel.app/api/rooms/...`.
+Deploy to any Node.js host (Railway, Render, Fly.io, a VPS, etc.):
+
+1. Set the environment variables from `.env.example` in your hosting platform.
+2. Run `npm run build` to build the frontend.
+3. Run `npm start` to start the Express server (`NODE_ENV=production`).
+
+The server listens on `process.env.PORT` (default `3000`) and serves both the API and the compiled frontend from `frontend/dist/`.
 
 ---
 
