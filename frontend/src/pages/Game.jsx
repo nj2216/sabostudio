@@ -66,6 +66,12 @@ export default function Game({ peer, players, isHost, broadcast, hostConn, myPee
   // Host-only state
   const gameStateRef = useRef(null);
   const tickIntervalRef = useRef(null);
+  const broadcastRef = useRef(broadcast);
+  const myPeerIdRef = useRef(myPeerId);
+
+  // Keep refs in sync
+  useEffect(() => { broadcastRef.current = broadcast; }, [broadcast]);
+  useEffect(() => { myPeerIdRef.current = myPeerId; }, [myPeerId]);
 
   // ── Host: Initialize game engine ──────────────────────────────────────────
   useEffect(() => {
@@ -75,29 +81,29 @@ export default function Game({ peer, players, isHost, broadcast, hostConn, myPee
     gameStateRef.current = state;
 
     // Set initial task for host
-    const myState = state.players[myPeerId];
+    const myState = state.players[myPeerIdRef.current];
     if (myState) {
       setMyTask(myState.currentTask);
       setMyProgress(0);
     }
 
     // Broadcast initial state to all guests
-    broadcastFullState(state);
+    if (broadcastRef.current) {
+      broadcastRef.current({ type: 'game-init', payload: { players: state.players } });
+    }
 
     // Start tick loop
     tickIntervalRef.current = setInterval(() => {
       const actions = tick(state);
       actions.forEach((action) => {
         handleHostAction(action);
-        // Broadcast action to guests
-        if (broadcast) {
-          broadcast({ type: 'game-action', payload: action });
+        if (broadcastRef.current) {
+          broadcastRef.current({ type: 'game-action', payload: action });
         }
       });
 
-      // Broadcast time update periodically
-      if (broadcast) {
-        broadcast({
+      if (broadcastRef.current) {
+        broadcastRef.current({
           type: 'game-time',
           payload: { timeRemaining: state.timeRemaining },
         });
@@ -108,6 +114,7 @@ export default function Game({ peer, players, isHost, broadcast, hostConn, myPee
     return () => {
       if (tickIntervalRef.current) clearInterval(tickIntervalRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHost]);
 
   // ── Guest: Listen for messages from host ──────────────────────────────────
@@ -204,35 +211,21 @@ export default function Game({ peer, players, isHost, broadcast, hostConn, myPee
     };
   }, [isHost, peer, broadcast]);
 
-  // ── Broadcast full state (host only) ──────────────────────────────────────
-  function broadcastFullState(state) {
-    if (broadcast) {
-      broadcast({ type: 'game-init', payload: { players: state.players } });
-    }
-  }
-
   // ── Handle action (both host and guest) ───────────────────────────────────
   function handleHostAction(action) {
-    switch (action.type) {
-      case 'screen-swap': {
-        const { swaps } = action.payload;
-        swaps.forEach((swap) => {
-          if (swap.from === myPeerId) {
-            // My task was sent to someone else, I get the new one (from.to)
-            // Actually: swap.from = me, swap means I gave my task away
-          }
-        });
-        // Find what task I now have
-        const state = gameStateRef.current;
-        if (state) {
-          const myState = state.players[myPeerId];
-          if (myState) {
-            setMyTask(myState.currentTask);
-            setMyProgress(myState.taskProgress);
-          }
-        }
-        setSwapNotification('🔀 SCREEN SWAP!');
-        setTimeout(() => setSwapNotification(null), 2000);
+   switch (action.type) {
+     case 'screen-swap': {
+       // Host reads directly from authoritative game state
+       const state = gameStateRef.current;
+       if (state) {
+         const myState = state.players[myPeerId];
+         if (myState) {
+           setMyTask(myState.currentTask);
+           setMyProgress(myState.taskProgress);
+         }
+       }
+       setSwapNotification('🔀 SCREEN SWAP!');
+       setTimeout(() => setSwapNotification(null), 2000);
         break;
       }
 
@@ -293,31 +286,14 @@ export default function Game({ peer, players, isHost, broadcast, hostConn, myPee
   function handleGuestAction(action) {
     switch (action.type) {
       case 'screen-swap': {
+        // Swaps are pairs: [{from, to, task, progress}, {from, to, task, progress}]
+        // Each entry means: "from" player's old task (task/progress) was given to "to" player.
+        // So if I'm listed as "to", I receive that task.
         const { swaps } = action.payload;
-        for (const swap of swaps) {
-          if (swap.from === myPeerId) {
-            // I received the other person's task
-            // The "to" field has the task that was sent to me
-          }
-          if (swap.to === myPeerId) {
-            setMyTask(swap.task);
-            setMyProgress(swap.progress);
-          }
-        }
-        // Actually, let's find my new task from the swap data
-        const mySwap = swaps.find((s) => s.to === myPeerId);
-        if (mySwap) {
-          // I was swapped: I now have the task from swap.from
-        }
-        // For guests, need to find which swap involves them
-        const involvedAsFrom = swaps.find((s) => s.from === myPeerId);
-        if (involvedAsFrom) {
-          // My task went to someone else, I get the other task
-          const otherSwap = swaps.find((s) => s.from !== myPeerId);
-          if (otherSwap) {
-            setMyTask(otherSwap.task);
-            setMyProgress(otherSwap.progress);
-          }
+        const myNewTask = swaps.find((s) => s.to === myPeerId);
+        if (myNewTask) {
+          setMyTask(myNewTask.task);
+          setMyProgress(myNewTask.progress);
         }
         setSwapNotification('🔀 SCREEN SWAP!');
         setTimeout(() => setSwapNotification(null), 2000);

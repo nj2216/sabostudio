@@ -51,10 +51,10 @@ export default function TrafficDrive({ onProgress, onComplete, progress }) {
         let newDodged = 0;
         for (const o of updated) {
           if (o.y > 90) {
-            // Passed the player zone
+            // Passed the player zone — dodged successfully
             newDodged++;
           } else if (o.y >= 75 && o.y <= 90 && o.lane === playerLane) {
-            // Collision!
+            // Collision! Remove the obstacle (don't add to surviving)
             setCrashed(true);
             setTimeout(() => setCrashed(false), 300);
           } else {
