@@ -50,6 +50,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   const connectionsRef = useRef(null);
   const onMessageRef = useRef(null);
   const connRef = useRef(null); // guest's DataConnection to host
+  const isTransitioningRef = useRef(false);
 
   useEffect(() => {
     playersRef.current = players;
@@ -86,8 +87,10 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     onMessageRef.current = onMessage;
 
     return () => {
-      // Clean up connections on unmount.
-      connections.forEach((conn) => conn.close());
+      // Clean up connections on unmount, unless we are transitioning to the game
+      if (!isTransitioningRef.current) {
+        connections.forEach((conn) => conn.close());
+      }
     };
   }, [isHost, peer]);
 
@@ -104,6 +107,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
             setPlayers(msg.payload.players);
           }
           if (msg.type === 'game-start') {
+            isTransitioningRef.current = true;
             setGameStarting(true);
             // Transition to game screen with the live connection
             onGameStart?.({
@@ -133,7 +137,9 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     connect();
 
     return () => {
-      conn?.close();
+      if (!isTransitioningRef.current) {
+        conn?.close();
+      }
     };
   }, [isHost, peer, hostPeerId, playerName, playerId, onGameStart]);
 
@@ -165,6 +171,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
 
   // ── Start Game (host only) ─────────────────────────────────────────────────
   function handleStartGame() {
+    isTransitioningRef.current = true;
     setGameStarting(true);
     if (broadcastRef.current) {
       broadcastRef.current({ type: 'game-start', payload: {} });

@@ -203,16 +203,17 @@ export default function LotCanvas({
         />
       )}
 
-        {/* ── Vent sealed indicator ──────────────────────────────────────────── */}
-        {ventSealed && (
-          <div
-            className="absolute bottom-0 left-0 right-0 text-center text-xs font-bold py-1"
-            style={{ background: 'rgba(80,0,0,0.7)', color: '#f87171', zIndex: 45 }}
-          >
-            ⛔ Vents Sealed by Director
-          </div>
-        )}
       </div>
+
+      {/* ── Vent sealed indicator ──────────────────────────────────────────── */}
+      {ventSealed && (
+        <div
+          className="absolute bottom-0 left-0 right-0 text-center text-xs font-bold py-1"
+          style={{ background: 'rgba(80,0,0,0.7)', color: '#f87171', zIndex: 45 }}
+        >
+          ⛔ Vents Sealed by Director
+        </div>
+      )}
 
       {/* ── Map legend ─────────────────────────────────────────────────────── */}
       <div
