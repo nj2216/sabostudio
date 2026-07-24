@@ -49,11 +49,28 @@ sabostudio/
 ├── frontend/                   # Vite + React app
 │   ├── src/
 │   │   ├── lib/
-│   │   │   └── peer.js         # PeerJS wrapper (createPeer, setupHost, connectToHost)
+│   │   │   ├── peer.js         # PeerJS wrapper (createPeer, setupHost, connectToHost)
+│   │   │   ├── stationSwap.js  # useStationSwap hook + host-side swap scheduler
+│   │   │   └── playerMovement.js # Client-predicted movement + host position relay
 │   │   ├── pages/
 │   │   │   ├── Landing.jsx     # Create Room / Join Room UI
-│   │   │   └── Lobby.jsx       # Waiting room + player list + Start Game
-│   │   ├── App.jsx             # Top-level screen routing
+│   │   │   ├── Lobby.jsx       # Waiting room + player list + Start Game
+│   │   │   └── Game.jsx        # Main game screen (map + stations + sabotage + Director HUD)
+│   │   ├── stations/
+│   │   │   ├── BombSet/        # Wire cutting, keypad code, symbol match
+│   │   │   ├── Kitchen/        # Ingredient sequencing, stove dial match
+│   │   │   ├── TestTrack/      # Gear shift QTE, obstacle dodge
+│   │   │   ├── RadioBooth/     # Frequency tuning, fader balance
+│   │   │   └── EditingBay/     # Timeline reorder, sync rhythm
+│   │   ├── sabotage/
+│   │   │   ├── SabotageEffect.js  # Shared interface + registry for all effects
+│   │   │   ├── SabotageDeck.js    # Host-side broadcaster + useSabotageReceiver hook
+│   │   │   └── effects/           # 12 effect implementations (visual, input, social, structural)
+│   │   ├── map/
+│   │   │   ├── lotLayout.json       # Room bounds, doors, vent pairs, task room IDs
+│   │   │   ├── LotCanvas.jsx        # Renders the top-down studio map + player avatars
+│   │   │   └── useTaskZoneTrigger.js # Detects player overlap with task room interact zones
+│   │   ├── App.jsx             # Top-level screen routing (landing → lobby → game)
 │   │   ├── main.jsx
 │   │   └── index.css           # Tailwind base styles
 │   ├── package.json
@@ -233,13 +250,17 @@ The server listens on `process.env.PORT` (default `3000`) and serves both the AP
 
 These are intentionally left as stubs to be built in follow-up PRs:
 
-- [ ] **Minigame implementations** — bomb defusal, cooking, driving, radio tuning
-- [ ] **Sabotage Deck** — fake pop-ups, invert controls, blindfold, grease screen
-- [ ] **Studio Crisis** co-op events
+- [x] **Station implementations** — BombSet, Kitchen, TestTrack, RadioBooth, EditingBay
+- [x] **Sabotage Deck** — 12 effects across visual/input/social/structural categories
+- [x] **Station swap engine** — `useStationSwap` hook + host scheduler (15–20 s, random)
+- [x] **Free-roam map** — "The Lot" tilemap with WASD movement + interact zones
+- [x] **Director HUD** — host Director Tokens + sabotage firing UI
+- [x] **Studio Crisis** — power-outage, fire-alarm, take-too-many co-op events
+- [x] **Screen/control splitting** — viewingStationId ≠ controllingStationId per player
 - [ ] **Host migration** — elect a new host peer if the host disconnects
-- [ ] **Screen/control swapping** engine (every 15–20 seconds)
 - [ ] **Voice chat** integration
 - [ ] **Post-game stats** persistence in Supabase
 - [ ] **Avatar selection** in the lobby
 - [ ] **Automatic room cleanup** (expired rooms) via a scheduled function
+- [ ] **Trust Meter** — social deduction layer with Crew Trust score
 

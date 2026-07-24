@@ -7,15 +7,15 @@
  *   - Listens for incoming PeerJS connections from guests.
  *   - Maintains the authoritative player list and broadcasts it to all guests.
  *   - Polls /api/rooms/[code] as a fallback to pick up players who reconnect.
- *   - Shows a "Start Game" button (stub — actual minigames are out of scope).
+ *   - Shows a "Start Game" button that transitions to the Game screen.
  *
  * Guest:
  *   - Connects to the host via PeerJS and announces itself with 'player-joined'.
  *   - Receives 'player-list-update' messages from the host to render the list.
  *   - Polls /api/rooms/[code] as a fallback for resilience.
+ *   - Transitions to Game screen on 'game-start' message.
  *
  * TODO (follow-up PRs):
- *   - Actual minigame routing on 'game-start' message.
  *   - Avatar selection.
  *   - Host migration on host disconnect.
  *   - Voice chat.
@@ -35,9 +35,10 @@ const POLL_INTERVAL = 3000;
  *   playerName: string,
  *   isHost: boolean,
  *   hostPeerId?: string,   // Only for guests
+ *   onGameStart: Function, // Called when the game starts with game props
  * }} props
  */
-export default function Lobby({ code, peer, playerId, playerName, isHost, hostPeerId }) {
+export default function Lobby({ code, peer, playerId, playerName, isHost, hostPeerId, onGameStart }) {
   const [players, setPlayers] = useState([{ id: playerId, name: playerName, isHost }]);
   const [gameStarting, setGameStarting] = useState(false);
   const [peerConnected, setPeerConnected] = useState(isHost); // Host is "always connected" as self
@@ -46,6 +47,8 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   // Refs so callbacks don't close over stale state.
   const playersRef = useRef(players);
   const broadcastRef = useRef(null);
+  const connectionsRef = useRef(null);
+  const connRef = useRef(null); // guest's DataConnection to host
 
   useEffect(() => {
     playersRef.current = players;
@@ -73,6 +76,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     });
 
     broadcastRef.current = broadcast;
+    connectionsRef.current = connections;
 
     return () => {
       // Clean up connections on unmount.
@@ -94,10 +98,21 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
           }
           if (msg.type === 'game-start') {
             setGameStarting(true);
-            // TODO: route to actual game screen in a follow-up PR.
+            // Transition to game screen with the live connection
+            onGameStart?.({
+              peer,
+              playerId,
+              playerName,
+              isHost: false,
+              players: playersRef.current,
+              conn,
+              broadcast: null,
+              connections: null,
+            });
           }
         });
 
+        connRef.current = conn;
         setPeerConnected(true);
 
         // Announce ourselves to the host.
@@ -112,7 +127,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     return () => {
       conn?.close();
     };
-  }, [isHost, peer, hostPeerId, playerName]);
+  }, [isHost, peer, hostPeerId, playerName, playerId, onGameStart]);
 
   // ── REST API polling (resilience fallback) ─────────────────────────────────
   useEffect(() => {
@@ -146,7 +161,17 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     if (broadcastRef.current) {
       broadcastRef.current({ type: 'game-start', payload: {} });
     }
-    // TODO: navigate to minigame screen in a follow-up PR.
+    // Transition the host to the game screen
+    onGameStart?.({
+      peer,
+      playerId,
+      playerName,
+      isHost: true,
+      players: playersRef.current,
+      conn: null,
+      broadcast: broadcastRef.current,
+      connections: connectionsRef.current,
+    });
   }
 
   // ── Copy room code to clipboard ───────────────────────────────────────────
@@ -165,12 +190,11 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     return (
       <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-6">
         <h1 className="text-4xl font-extrabold text-yellow-400 animate-pulse">
-          🎬 Game Starting…
+          🎬 Loading The Lot…
         </h1>
         <p className="text-gray-400 mt-4">
-          Minigames coming in a follow-up update — stay tuned!
+          Heading to the studio…
         </p>
-        {/* TODO: route to minigame screen */}
       </div>
     );
   }
