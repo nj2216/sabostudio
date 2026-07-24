@@ -48,6 +48,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   const playersRef = useRef(players);
   const broadcastRef = useRef(null);
   const connectionsRef = useRef(null);
+  const onMessageRef = useRef(null);
   const connRef = useRef(null); // guest's DataConnection to host
 
   useEffect(() => {
@@ -58,12 +59,17 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   useEffect(() => {
     if (!isHost) return;
 
-    const { broadcast, connections } = setupHost(peer, ({ peerId, name }) => {
+    const { broadcast, connections, onMessage } = setupHost(peer);
+
+    onMessage('player-joined', (conn, payload) => {
+      const peerId = conn.peer;
+      const { name, playerId: guestPlayerId } = payload;
+
       // A guest announced itself via 'player-joined'. Add to list if not present.
       setPlayers((prev) => {
         const alreadyIn = prev.some((p) => p.peerId === peerId);
         if (alreadyIn) return prev;
-        const updated = [...prev, { id: peerId, peerId, name, isHost: false }];
+        const updated = [...prev, { id: guestPlayerId, peerId, name, isHost: false }];
 
         // Broadcast updated list to all guests.
         broadcast({
@@ -77,6 +83,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
 
     broadcastRef.current = broadcast;
     connectionsRef.current = connections;
+    onMessageRef.current = onMessage;
 
     return () => {
       // Clean up connections on unmount.
@@ -108,6 +115,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
               conn,
               broadcast: null,
               connections: null,
+              onMessage: null,
             });
           }
         });
@@ -116,7 +124,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
         setPeerConnected(true);
 
         // Announce ourselves to the host.
-        sendMessage(conn, 'player-joined', { name: playerName });
+        sendMessage(conn, 'player-joined', { name: playerName, playerId });
       } catch (err) {
         console.error('[SaboGuest] Failed to connect to host:', err);
       }
@@ -171,6 +179,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
       conn: null,
       broadcast: broadcastRef.current,
       connections: connectionsRef.current,
+      onMessage: onMessageRef.current,
     });
   }
 

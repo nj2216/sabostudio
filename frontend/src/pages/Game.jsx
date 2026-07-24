@@ -224,6 +224,7 @@ export default function Game({
   conn,
   broadcast,
   // connections — reserved for future host-migration use
+  onMessage
 }) {
   // ── Station overlay ──────────────────────────────────────────────────────
   const [activeStationId, setActiveStationId] = useState(null);
@@ -294,21 +295,15 @@ export default function Game({
 
   // ── Host: handle guest messages (player-move + any future types) ─────────
   useEffect(() => {
-    if (!isHost || !peer) return;
+    if (!isHost || !onMessage) return;
 
-    function handleGuestData(conn) {
-      conn.on('data', (raw) => {
-        let msg;
-        try { msg = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
-        if (msg.type === 'player-move') {
-          receiveGuestMove(conn.peer, msg.payload);
-        }
-      });
-    }
-
-    peer.on('connection', handleGuestData);
-    return () => peer.off('connection', handleGuestData);
-  }, [isHost, peer, receiveGuestMove]);
+    onMessage('player-move', (conn, payload) => {
+      const canonicalId = players.find(p => p.peerId === conn.peer)?.id;
+      if (canonicalId) {
+        receiveGuestMove(canonicalId, payload);
+      }
+    });
+  }, [isHost, onMessage, players, receiveGuestMove]);
 
   // ── Director map effects via crisis / lockdown ───────────────────────────
   function handleCrisis(type) {

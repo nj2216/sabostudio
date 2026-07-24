@@ -51,13 +51,38 @@ export default function LotCanvas({
   // Local player position (for blackout fog-of-war)
   const localPos = allPositions[localPlayerId] ?? { x: mapWidth / 2, y: mapHeight / 2 };
 
+  // ── Camera setup ─────────────────────────────────────────────────────────
+  const VIEWPORT_WIDTH = 480;
+  const VIEWPORT_HEIGHT = 360;
+  const SCALE = 1.6;
+
+  // Center camera on local player
+  let tx = localPos.x - (VIEWPORT_WIDTH / 2) / SCALE;
+  let ty = localPos.y - (VIEWPORT_HEIGHT / 2) / SCALE;
+
+  // Clamp to map bounds
+  const maxTx = mapWidth - VIEWPORT_WIDTH / SCALE;
+  const maxTy = mapHeight - VIEWPORT_HEIGHT / SCALE;
+
+  tx = Math.max(0, Math.min(tx, maxTx));
+  ty = Math.max(0, Math.min(ty, maxTy));
+
   return (
     <div
       className="relative overflow-hidden rounded-xl border border-gray-700 select-none"
-      style={{ width: mapWidth, height: mapHeight, background: '#0d0d0d', flexShrink: 0 }}
+      style={{ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, background: '#0d0d0d', flexShrink: 0 }}
     >
-      {/* ── Corridors ───────────────────────────────────────────────────────── */}
-      {corridors.map((c) => (
+      <div
+        className="absolute top-0 left-0"
+        style={{
+          width: mapWidth,
+          height: mapHeight,
+          transformOrigin: '0 0',
+          transform: `scale(${SCALE}) translate(${-tx}px, ${-ty}px)`,
+        }}
+      >
+        {/* ── Corridors ───────────────────────────────────────────────────────── */}
+        {corridors.map((c) => (
         <div
           key={c.id}
           className="absolute"
@@ -178,20 +203,21 @@ export default function LotCanvas({
         />
       )}
 
-      {/* ── Vent sealed indicator ──────────────────────────────────────────── */}
-      {ventSealed && (
-        <div
-          className="absolute bottom-0 left-0 right-0 text-center text-xs font-bold py-1"
-          style={{ background: 'rgba(80,0,0,0.7)', color: '#f87171', zIndex: 45 }}
-        >
-          ⛔ Vents Sealed by Director
-        </div>
-      )}
+        {/* ── Vent sealed indicator ──────────────────────────────────────────── */}
+        {ventSealed && (
+          <div
+            className="absolute bottom-0 left-0 right-0 text-center text-xs font-bold py-1"
+            style={{ background: 'rgba(80,0,0,0.7)', color: '#f87171', zIndex: 45 }}
+          >
+            ⛔ Vents Sealed by Director
+          </div>
+        )}
+      </div>
 
       {/* ── Map legend ─────────────────────────────────────────────────────── */}
       <div
         className="absolute top-1 right-1 text-xs text-gray-600 pointer-events-none"
-        style={{ fontSize: 7 }}
+        style={{ fontSize: 7, zIndex: 50 }}
       >
         WASD / ↑↓←→ to move · E to interact
       </div>
