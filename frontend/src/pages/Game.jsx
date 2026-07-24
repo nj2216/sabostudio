@@ -262,6 +262,7 @@ export default function Game({
   onMessage,
 }) {
   const [activeStationId, setActiveStationId] = useState(null);
+  const [stationResetKey, setStationResetKey] = useState(0);
   const stationElRef = useRef(null);
 
   const [scores, setScores] = useState(() => {
@@ -392,6 +393,10 @@ export default function Game({
         if (payload?.targetPlayerId === playerId) {
           showToast(`⚠️ Sabotage applied to you by ${payload.buyerName || 'an opponent'}!`);
         }
+      },
+      onTaskRewind: () => {
+        setStationResetKey((prev) => prev + 1);
+        showToast('⏪ Task Rewound! Progress reset.');
       },
     }),
     [handleControlSwapEvent, playerId]
@@ -695,6 +700,7 @@ export default function Game({
               <div className="p-4 flex-1 overflow-auto flex flex-col items-center justify-center bg-slate-950/70">
                 {StationComp && (
                   <StationComp
+                    key={stationResetKey}
                     isControlling={true}
                     onSolve={handleTaskSolve}
                   />

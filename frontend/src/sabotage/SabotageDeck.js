@@ -22,6 +22,7 @@ export function applySabotageEffectLocally(payload, getTargetEl, activeEffectsMa
     stationId: payload.stationId,
     targetPlayerId,
     onFreeze: callbacks.onFreeze,
+    onTaskRewind: callbacks.onTaskRewind,
   };
 
   try {
