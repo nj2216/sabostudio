@@ -26,8 +26,8 @@ function App() {
     setScreen('lobby');
   }
 
-  function handleGameStart({ peer, playerId, playerName, isHost, players, conn, broadcast, connections, onMessage }) {
-    setGameProps({ peer, playerId, playerName, isHost, players, conn, broadcast, connections, onMessage });
+  function handleGameStart({ peer, playerId, playerName, isHost, players, conn, broadcast, connections, onMessage, swapSettings }) {
+    setGameProps({ peer, playerId, playerName, isHost, players, conn, broadcast, connections, onMessage, swapSettings });
     setScreen('game');
   }
 

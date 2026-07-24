@@ -42,6 +42,7 @@ export default function LotCanvas({
   lockedRooms = [],
   blackout = false,
   ventSealed = false,
+  controllingStationId = null,
 }) {
   const playerIndex = (id) => players.findIndex((p) => p.id === id);
 
@@ -188,6 +189,43 @@ export default function LotCanvas({
             >
               {name}
             </span>
+
+            {/* Target Room Arrow (Local Player Only) */}
+            {isLocal && controllingStationId && (() => {
+              const targetRoom = rooms.find((r) => r.stationId === controllingStationId);
+              if (!targetRoom) return null;
+
+              const targetX = targetRoom.bounds.x1 + (targetRoom.bounds.x2 - targetRoom.bounds.x1) / 2;
+              const targetY = targetRoom.bounds.y1 + (targetRoom.bounds.y2 - targetRoom.bounds.y1) / 2;
+
+              const dx = targetX - pos.x;
+              const dy = targetY - pos.y;
+
+              const angle = Math.atan2(dy, dx);
+
+              // Draw the arrow a bit outside the avatar
+              const dist = AVATAR_RADIUS + 12;
+              const arrowX = Math.cos(angle) * dist + AVATAR_RADIUS;
+              const arrowY = Math.sin(angle) * dist + AVATAR_RADIUS;
+
+              return (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: arrowX,
+                    top: arrowY,
+                    width: 0,
+                    height: 0,
+                    borderTop: '4px solid transparent',
+                    borderBottom: '4px solid transparent',
+                    borderLeft: '6px solid #facc15',
+                    transform: `translate(-50%, -50%) rotate(${angle}rad)`,
+                    transformOrigin: 'center center',
+                    filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.8))'
+                  }}
+                />
+              );
+            })()}
           </div>
         );
       })}

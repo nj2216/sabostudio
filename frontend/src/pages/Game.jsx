@@ -224,7 +224,8 @@ export default function Game({
   conn,
   broadcast,
   // connections — reserved for future host-migration use
-  onMessage
+  onMessage,
+  swapSettings,
 }) {
   // ── Station overlay ──────────────────────────────────────────────────────
   const [activeStationId, setActiveStationId] = useState(null);
@@ -261,23 +262,32 @@ export default function Game({
     }, []),
   });
 
+  // ── Station swap (client hook) ───────────────────────────────────────────
+  const { viewingStationId, controllingStationId, countdown, setHostMapping } = useStationSwap(
+    isHost ? null : conn,
+    playerId,
+    null,
+  );
+
   // ── Station swap (host) ──────────────────────────────────────────────────
   const swapSchedulerRef = useRef(null);
 
   useEffect(() => {
     if (!isHost) return;
     const playerIds = players.map((p) => p.id);
-    const { stop, triggerNow } = startSwapScheduler(broadcast, playerIds, TASK_STATION_IDS);
+    const { stop, triggerNow } = startSwapScheduler(
+      broadcast,
+      playerIds,
+      TASK_STATION_IDS,
+      swapSettings?.minMs,
+      swapSettings?.maxMs,
+      (mapping, delay) => {
+        setHostMapping(mapping[playerId], delay);
+      }
+    );
     swapSchedulerRef.current = { stop, triggerNow };
     return () => stop();
-  }, [isHost, broadcast, players]);
-
-  // ── Station swap (client hook) ───────────────────────────────────────────
-  const { viewingStationId, controllingStationId, countdown } = useStationSwap(
-    isHost ? null : conn,
-    playerId,
-    null,
-  );
+  }, [isHost, broadcast, players, swapSettings, playerId, setHostMapping]);
 
   // ── Sabotage receiver (guests) ───────────────────────────────────────────
   const sabotageCallbacks = useMemo(() => ({
@@ -365,6 +375,7 @@ export default function Game({
             lockedRooms={lockedRooms}
             blackout={blackout}
             ventSealed={ventSealed}
+            controllingStationId={controllingStationId}
           />
           <p className="text-center text-xs text-gray-600 mt-1">
             WASD / ↑↓←→ · E to enter station
