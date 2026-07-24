@@ -1,57 +1,27 @@
 /**
  * frontend/src/pages/Lobby.jsx
  *
- * Lobby screen — shown after creating or joining a room.
- *
- * Host:
- *   - Listens for incoming PeerJS connections from guests.
- *   - Maintains the authoritative player list and broadcasts it to all guests.
- *   - Polls /api/rooms/[code] as a fallback to pick up players who reconnect.
- *   - Shows a "Start Game" button that transitions to the Game screen.
- *
- * Guest:
- *   - Connects to the host via PeerJS and announces itself with 'player-joined'.
- *   - Receives 'player-list-update' messages from the host to render the list.
- *   - Polls /api/rooms/[code] as a fallback for resilience.
- *   - Transitions to Game screen on 'game-start' message.
- *
- * TODO (follow-up PRs):
- *   - Avatar selection.
- *   - Host migration on host disconnect.
- *   - Voice chat.
+ * Redesigned Lobby screen with elevated sci-fi HUD styling.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { connectToHost, sendMessage, setupHost } from '../lib/peer.js';
 
-// How often (ms) to poll the REST API for the player list as a resilience fallback.
 const POLL_INTERVAL = 3000;
 
-/**
- * @param {{
- *   code: string,
- *   peer: import('peerjs').Peer,
- *   playerId: string,
- *   playerName: string,
- *   isHost: boolean,
- *   hostPeerId?: string,   // Only for guests
- *   onGameStart: Function, // Called when the game starts with game props
- * }} props
- */
 export default function Lobby({ code, peer, playerId, playerName, isHost, hostPeerId, onGameStart }) {
   const [players, setPlayers] = useState([{ id: playerId, name: playerName, isHost }]);
   const [gameStarting, setGameStarting] = useState(false);
-  const [peerConnected, setPeerConnected] = useState(isHost); // Host is "always connected" as self
+  const [peerConnected, setPeerConnected] = useState(isHost);
   const [copySuccess, setCopySuccess] = useState(false);
   const [swapMin, setSwapMin] = useState(15);
   const [swapMax, setSwapMax] = useState(20);
 
-  // Refs so callbacks don't close over stale state.
   const playersRef = useRef(players);
   const broadcastRef = useRef(null);
   const connectionsRef = useRef(null);
   const onMessageRef = useRef(null);
-  const connRef = useRef(null); // guest's DataConnection to host
+  const connRef = useRef(null);
   const isTransitioningRef = useRef(false);
 
   useEffect(() => {
@@ -68,13 +38,11 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
       const peerId = conn.peer;
       const { name, playerId: guestPlayerId } = payload;
 
-      // A guest announced itself via 'player-joined'. Add to list if not present.
       setPlayers((prev) => {
         const alreadyIn = prev.some((p) => p.peerId === peerId);
         if (alreadyIn) return prev;
         const updated = [...prev, { id: guestPlayerId, peerId, name, isHost: false }];
 
-        // Broadcast updated list to all guests.
         broadcast({
           type: 'player-list-update',
           payload: { players: updated.map((p) => ({ id: p.id, name: p.name, isHost: p.isHost, peerId: p.peerId })) },
@@ -89,7 +57,6 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     onMessageRef.current = onMessage;
 
     return () => {
-      // Clean up connections on unmount, unless we are transitioning to the game
       if (!isTransitioningRef.current) {
         connections.forEach((conn) => conn.close());
       }
@@ -111,7 +78,6 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
           if (msg.type === 'game-start') {
             isTransitioningRef.current = true;
             setGameStarting(true);
-            // Transition to game screen with the live connection
             onGameStart?.({
               peer,
               playerId,
@@ -128,8 +94,6 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
 
         connRef.current = conn;
         setPeerConnected(true);
-
-        // Announce ourselves to the host.
         sendMessage(conn, 'player-joined', { name: playerName, playerId });
       } catch (err) {
         console.error('[SaboGuest] Failed to connect to host:', err);
@@ -145,14 +109,13 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     };
   }, [isHost, peer, hostPeerId, playerName, playerId, onGameStart]);
 
-  // ── REST API polling (resilience fallback) ─────────────────────────────────
+  // ── REST API polling ───────────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/rooms/${code}`);
         if (!res.ok) return;
         const data = await res.json();
-        // Only use API data for guests (host is authoritative).
         if (!isHost) {
           setPlayers(
             data.players.map((p) => ({
@@ -164,7 +127,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
           );
         }
       } catch {
-        // Silently ignore polling errors.
+        // Fallback silently
       }
     }, POLL_INTERVAL);
 
@@ -178,7 +141,6 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     if (broadcastRef.current) {
       broadcastRef.current({ type: 'game-start', payload: {} });
     }
-    // Transition the host to the game screen
     onGameStart?.({
       peer,
       playerId,
@@ -200,21 +162,20 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     } catch {
-      // Fallback: select text — not needed since clipboard should be available in modern browsers.
+      // Ignore fallback
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   if (gameStarting) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
-        <div className="hud-container hud-cut-corner max-w-md w-full p-8 text-center flex flex-col items-center gap-4 border-neon-amber shadow-[0_0_30px_rgba(255,183,3,0.3)]">
-          <div className="w-12 h-12 border-4 border-neon-amber border-t-transparent rounded-full animate-spin" />
-          <h2 className="font-head text-2xl font-extrabold text-neon-amber tracking-wider animate-pulse">
-            INITIALIZING STUDIO LOT...
+        <div className="hud-container hud-cut-corner max-w-md w-full p-8 text-center flex flex-col items-center gap-5 border-amber-400/80 shadow-[0_0_40px_rgba(255,183,3,0.35)]">
+          <div className="w-14 h-14 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
+          <h2 className="font-head text-2xl font-black text-amber-400 tracking-wider animate-pulse">
+            INITIALIZING STUDIO MAP...
           </h2>
-          <p className="font-mono text-xs text-slate-400 tracking-wider">
-            ESTABLISHING WEBRTC P2P CHANNELS & STATIONS
+          <p className="font-mono text-xs text-slate-300 tracking-wider uppercase">
+            SYNCHRONIZING P2P DATASTREAMS & STATIONS
           </p>
         </div>
       </div>
@@ -222,40 +183,40 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   }
 
   return (
-    <div className="h-screen max-h-screen overflow-hidden flex flex-col items-center justify-between p-4 relative z-10">
+    <div className="h-screen max-h-screen overflow-hidden flex flex-col items-center justify-between p-4 sm:p-6 relative z-10">
       {/* Top HUD Nav Header */}
-      <div className="w-full max-w-xl">
+      <div className="w-full max-w-2xl">
         <div className="top-hud">
           <div className="flex items-center gap-4">
             <h1 className="brand-logo text-xl">
               SABOTAGE <span>STUDIO</span>
             </h1>
-            <span className="level-badge">LOBBY STAGE</span>
+            <span className="level-badge">SQUAD LOBBY</span>
           </div>
           <div className="timecode-box">
-            {isHost ? 'ROOM HOST' : 'OPERATOR'}
+            {isHost ? 'DIRECTOR HOST' : 'OPERATOR'}
           </div>
         </div>
       </div>
 
-      <div className="w-full max-w-xl flex-1 flex flex-col justify-center gap-4 min-h-0">
+      <div className="w-full max-w-2xl flex-1 flex flex-col justify-center gap-4 min-h-0 py-2">
         {/* Room code display card */}
         <div className="hud-container hud-cut-corner p-0">
           <div className="container-header">
             <div className="container-title">
-              <span className="status-indicator bg-neon-amber shadow-[0_0_8px_var(--neon-amber)]" />
+              <span className="status-indicator" style={{ background: '#ffb703', boxShadow: '0 0 10px #ffb703' }} />
               SESSION ACCESS CODE
             </div>
-            <span className="container-subtitle">SHARE WITH PLAYERS</span>
+            <span className="container-subtitle" style={{ color: '#ffb703' }}>SHARE WITH SQUAD</span>
           </div>
           <div className="p-5 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <span className="font-mono text-3xl font-extrabold text-neon-amber tracking-[0.25em] drop-shadow-[0_0_10px_rgba(255,183,3,0.4)]">
+              <span className="font-mono text-3xl sm:text-4xl font-black text-amber-400 tracking-[0.2em] drop-shadow-[0_0_14px_rgba(255,183,3,0.5)]">
                 {code}
               </span>
             </div>
             <button onClick={handleCopyCode} className="icon-btn font-mono text-xs">
-              {copySuccess ? '✓ COPIED TO CLIPBOARD' : '📋 COPY CODE'}
+              {copySuccess ? '✓ COPIED CODE' : '📋 COPY ACCESS CODE'}
             </button>
           </div>
         </div>
@@ -268,29 +229,29 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
               SQUAD ROSTER ({players.length}/8)
             </div>
             {!peerConnected && !isHost && (
-              <span className="font-mono text-xs text-neon-amber animate-pulse">CONNECTING TO HOST...</span>
+              <span className="font-mono text-xs text-amber-400 animate-pulse">CONNECTING TO HOST...</span>
             )}
           </div>
           <div className="p-5 flex flex-col gap-3">
-            <ul className="flex flex-col gap-2">
+            <ul className="flex flex-col gap-2.5 max-h-52 overflow-y-auto pr-1">
               {players.map((p) => (
                 <li
                   key={p.id ?? p.peerId ?? p.name}
-                  className="flex items-center justify-between p-3 bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors"
+                  className="flex items-center justify-between p-3 bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 transition-all rounded-sm"
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded flex items-center justify-center font-head font-bold text-xs ${p.isHost ? 'bg-neon-purple text-white shadow-[0_0_8px_var(--neon-purple)]' : 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/40'}`}>
+                    <div className={`w-9 h-9 rounded flex items-center justify-center font-head font-black text-sm ${p.isHost ? 'bg-purple-600 text-white shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-cyan-500/20 text-cyan-400 border border-cyan-400/40'}`}>
                       {p.name?.[0]?.toUpperCase() ?? '?'}
                     </div>
-                    <span className="font-sub font-semibold text-base text-slate-100">{p.name}</span>
+                    <span className="font-sub font-bold text-base text-slate-100">{p.name}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {p.isHost ? (
-                      <span className="font-mono text-[10px] bg-neon-purple/20 border border-neon-purple text-neon-purple px-2 py-0.5 tracking-wider font-bold">
-                        HOST
+                      <span className="font-mono text-[10px] bg-purple-500/20 border border-purple-500/80 text-purple-300 px-2.5 py-1 tracking-widest font-bold rounded-sm">
+                        DIRECTOR HOST
                       </span>
                     ) : (
-                      <span className="font-mono text-[10px] bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-2 py-0.5 tracking-wider">
+                      <span className="font-mono text-[10px] bg-cyan-500/10 border border-cyan-400/40 text-cyan-300 px-2.5 py-1 tracking-widest rounded-sm">
                         OPERATOR
                       </span>
                     )}
@@ -300,7 +261,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
             </ul>
 
             {players.length < 2 && (
-              <div className="p-3 bg-amber-950/20 border border-neon-amber/30 text-neon-amber font-mono text-xs text-center tracking-wider">
+              <div className="p-3 bg-amber-950/40 border border-amber-500/40 text-amber-300 font-mono text-xs text-center tracking-wider">
                 WAITING FOR AT LEAST 2 PLAYERS TO LAUNCH MISSION...
               </div>
             )}
@@ -311,15 +272,15 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
         <div className="hud-container hud-cut-corner p-0">
           <div className="container-header">
             <div className="container-title">
-              <span className="status-indicator bg-neon-cyan" />
-              GAMEPLAY OBJECTIVE
+              <span className="status-indicator" style={{ background: '#00ff9d', boxShadow: '0 0 10px #00ff9d' }} />
+              MISSION INTEL
             </div>
-            <span className="container-subtitle">POINTS & SABOTAGE MODE</span>
+            <span className="container-subtitle" style={{ color: '#00ff9d' }}>POINTS & SABOTAGE</span>
           </div>
           <div className="p-4 text-xs font-sub text-slate-300 flex flex-col gap-2 leading-relaxed">
-            <p>🎯 Complete station minigames around the lot to earn <b className="text-neon-amber">+100 PTS</b> each.</p>
-            <p>⚡ Spend your points in the <b className="text-neon-red">SABOTAGE SHOP</b> to disrupt opponents.</p>
-            <p>🔄 Use <b className="text-white">Control Swap</b> (100 PTS) to hijack an opponent's controls while keeping your camera locked on your avatar!</p>
+            <p>🎯 Complete mini-game tasks around the studio lot to earn <b className="text-amber-400">+100 PTS</b> each.</p>
+            <p>⚡ Spend points in the <b className="text-red-400">SABOTAGE SHOP</b> to execute attacks on opponents.</p>
+            <p>🔄 Trigger <b className="text-cyan-300">Control Swap</b> (100 PTS) to hijack an opponent's movements!</p>
           </div>
         </div>
 
@@ -333,12 +294,11 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
             {players.length < 2 ? '⏳ WAITING FOR OPERATORS...' : '▶️ LAUNCH MISSION SESSION'}
           </button>
         ) : (
-          <div className="p-4 bg-slate-900/50 border border-slate-800 text-slate-400 font-mono text-xs text-center tracking-wider">
-            WAITING FOR THE HOST TO START THE GAME...
+          <div className="p-4 bg-slate-900/70 border border-slate-800 text-slate-400 font-mono text-xs text-center tracking-wider">
+            WAITING FOR THE HOST TO START THE MISSION...
           </div>
         )}
       </div>
     </div>
   );
 }
-
