@@ -21,11 +21,14 @@ function IngredientSequencing({ isControlling, onSolve }) {
     const shuffled = [...ALL_INGREDIENTS].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 4);
   });
-  const [available] = useState(() =>
-    [...ALL_INGREDIENTS].sort(() => Math.random() - 0.5).slice(0, 6)
-  );
+  const [available] = useState(() => {
+    const remaining = ALL_INGREDIENTS.filter((ing) => !sequence.includes(ing));
+    const extras = remaining.sort(() => Math.random() - 0.5).slice(0, 2);
+    return [...sequence, ...extras].sort(() => Math.random() - 0.5);
+  });
   const [entered, setEntered] = useState([]);
   const [solved, setSolved] = useState(false);
+
 
   function add(ing) {
     if (!isControlling || solved) return;

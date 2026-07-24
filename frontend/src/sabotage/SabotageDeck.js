@@ -1,94 +1,107 @@
 /**
  * frontend/src/sabotage/SabotageDeck.js
  *
- * Host-side sabotage broadcaster.
+ * Sabotage Engine — handles points-based sabotage execution and network broadcast.
  *
- * The Director (host) holds a limited number of Director Tokens per round.
- * Spending a token broadcasts a 'sabotage-apply' message to all peers
- * targeting a specific player's station. Clients apply the effect locally.
+ * All players can earn points by completing tasks and spend points in the Sabotage Console.
  *
  * Message types:
- *   'sabotage-apply'   — host -> all peers
- *     payload: { effectId, targetPlayerId, stationId, durationMs }
- *   'sabotage-clear'   — host -> all peers  (optional early clear)
- *     payload: { effectId, targetPlayerId }
- *   'studio-crisis'    — host -> all peers
- *     payload: { type: 'power-outage' | 'fire-alarm' | 'take-too-many' }
- *
- * React hook for clients:
- *   useSabotageReceiver(conn, localPlayerId, stationElRef)
- *     Listens for sabotage-apply and applies effects to the station element.
+ *   'buy-sabotage'     — guest -> host (payload: { buyerId, effectId, targetPlayerId, stationId })
+ *   'sabotage-apply'   — host -> all peers (payload: { effectId, targetPlayerId, stationId, durationMs, buyerName })
+ *   'control-swap'     — host -> all peers (payload: { playerAId, playerBId, playerAName, playerBName, durationMs })
+ *   'studio-crisis'    — host -> all peers (payload: { type })
  */
 
 import { useEffect, useRef } from 'react';
 import { getEffect } from './SabotageEffect.js';
 
 // ---------------------------------------------------------------------------
-// Director Tokens
-// ---------------------------------------------------------------------------
-
-export const DIRECTOR_TOKENS_PER_ROUND = 3;
-
-// ---------------------------------------------------------------------------
-// Host-side broadcaster
+// Host Sabotage Handler
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a SabotageDeck instance for the host.
+ * Creates a SabotageBroadcaster instance for the host.
  *
- * @param {Function} broadcast — host broadcast fn from setupHost()
- * @param {number}   [tokensPerRound]
+ * @param {Function} broadcast — host broadcast fn
+ * @param {Function} getScores — fn returning current scores map { [playerId]: number }
+ * @param {Function} setScores — fn updating scores map
+ * @param {Array} players      — list of current players
  * @returns {{
- *   tokensLeft: number,
- *   fire:      (effectId: string, targetPlayerId: string, stationId: string) => boolean,
- *   crisis:    (type: 'power-outage' | 'fire-alarm' | 'take-too-many') => void,
- *   reset:     () => void,
+ *   fireSabotage: (buyerId: string, effectId: string, targetPlayerId: string, stationId?: string) => boolean,
+ *   crisis: (type: string) => void,
  * }}
  */
-export function createSabotageDeck(broadcast, tokensPerRound = DIRECTOR_TOKENS_PER_ROUND) {
-  let tokensLeft = tokensPerRound;
-
+export function createSabotageBroadcaster(broadcast, getScores, setScores, players = []) {
   /**
-   * Fire a sabotage effect at a target player.
-   * Returns false if out of tokens.
+   * Execute a sabotage purchase.
+   * Returns true if successful (buyer had enough points).
    */
-  function fire(effectId, targetPlayerId, stationId) {
+  function fireSabotage(buyerId, effectId, targetPlayerId, stationId = 'any') {
     const effect = getEffect(effectId);
-    if (!effect) {
-      console.warn('[SabotageDeck] Unknown effect:', effectId);
-      return false;
-    }
-    if (tokensLeft <= 0) return false;
+    if (!effect) return false;
 
-    tokensLeft--;
+    const scores = getScores();
+    const currentScore = scores[buyerId] ?? 0;
+    const cost = effect.cost ?? 50;
+
+    if (currentScore < cost) {
+      return false; // Not enough points
+    }
+
+    // Deduct points
+    const updatedScores = { ...scores, [buyerId]: currentScore - cost };
+    setScores(updatedScores);
+    broadcast({ type: 'score-update', payload: { scores: updatedScores } });
+
+    const buyerName = players.find((p) => p.id === buyerId)?.name ?? 'Someone';
+
+    // Handle Control Swap special sabotage
+    if (effectId === 'controlSwap' || effectId === 'earlySwap') {
+      let targetId = targetPlayerId;
+      // If targetId not provided or invalid, pick random opponent
+      if (!targetId || targetId === buyerId) {
+        const opponents = players.filter((p) => p.id !== buyerId);
+        targetId = opponents[Math.floor(Math.random() * opponents.length)]?.id;
+      }
+      if (!targetId) return false;
+
+      const playerA = players.find((p) => p.id === buyerId);
+      const playerB = players.find((p) => p.id === targetId);
+
+      broadcast({
+        type: 'control-swap',
+        payload: {
+          playerAId: buyerId,
+          playerBId: targetId,
+          playerAName: playerA?.name ?? 'Player A',
+          playerBName: playerB?.name ?? 'Player B',
+          durationMs: effect.durationMs || 15000,
+        },
+      });
+      return true;
+    }
+
+    // Standard sabotage effect
     broadcast({
       type: 'sabotage-apply',
       payload: {
         effectId,
+        buyerId,
+        buyerName,
         targetPlayerId,
         stationId,
         durationMs: effect.durationMs,
       },
     });
+
     return true;
   }
 
-  /** Broadcast a Studio Crisis co-op event to all players. */
   function crisis(type) {
     broadcast({ type: 'studio-crisis', payload: { type } });
   }
 
-  /** Refill tokens (call at round start). */
-  function reset() {
-    tokensLeft = tokensPerRound;
-  }
-
-  return {
-    get tokensLeft() { return tokensLeft; },
-    fire,
-    crisis,
-    reset,
-  };
+  return { fireSabotage, crisis };
 }
 
 // ---------------------------------------------------------------------------
@@ -96,20 +109,19 @@ export function createSabotageDeck(broadcast, tokensPerRound = DIRECTOR_TOKENS_P
 // ---------------------------------------------------------------------------
 
 /**
- * React hook that listens for 'sabotage-apply' messages and applies effects
- * to the local player's station DOM element.
+ * React hook that listens for sabotage messages on client connection.
  *
- * @param {import('peerjs').DataConnection | null} conn  — null for host
- * @param {string}   localPlayerId
- * @param {React.RefObject<HTMLElement>} stationElRef    — ref to the station container
+ * @param {import('peerjs').DataConnection | null} conn
+ * @param {string} localPlayerId
+ * @param {React.RefObject<HTMLElement>} stationElRef
  * @param {{
- *   onEarlySwap?: Function,
+ *   onControlSwap?: (data: { playerAId: string, playerBId: string, playerAName: string, playerBName: string, durationMs: number }) => void,
  *   onFreeze?: (frozen: boolean) => void,
  *   onCrisis?: (type: string) => void,
+ *   onSabotageApplied?: (payload: any) => void,
  * }} [callbacks]
  */
 export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks = {}) {
-  // Track active cleanups by effectId so we can clear them early if needed
   const activeEffects = useRef(new Map());
 
   useEffect(() => {
@@ -125,29 +137,26 @@ export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks
 
       if (msg.type === 'sabotage-apply') {
         const { effectId, targetPlayerId, durationMs } = msg.payload ?? {};
+        callbacks.onSabotageApplied?.(msg.payload);
+
         if (targetPlayerId !== localPlayerId) return;
 
-        const el = stationElRef.current;
-        if (!el) return;
-
+        const el = stationElRef?.current;
         const effect = getEffect(effectId);
         if (!effect) return;
 
-        // Run cleanup if the same effect is already active
         const existing = activeEffects.current.get(effectId);
         if (existing) existing();
 
         const ctx = {
           stationId: msg.payload.stationId,
           targetPlayerId,
-          onEarlySwap: callbacks.onEarlySwap,
           onFreeze: callbacks.onFreeze,
         };
 
         const cleanup = effect.apply(el, ctx);
         activeEffects.current.set(effectId, cleanup);
 
-        // Auto-clear after duration
         if (durationMs > 0) {
           setTimeout(() => {
             const fn = activeEffects.current.get(effectId);
@@ -159,14 +168,8 @@ export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks
         }
       }
 
-      if (msg.type === 'sabotage-clear') {
-        const { effectId, targetPlayerId } = msg.payload ?? {};
-        if (targetPlayerId !== localPlayerId) return;
-        const fn = activeEffects.current.get(effectId);
-        if (fn) {
-          fn();
-          activeEffects.current.delete(effectId);
-        }
+      if (msg.type === 'control-swap') {
+        callbacks.onControlSwap?.(msg.payload);
       }
 
       if (msg.type === 'studio-crisis') {
@@ -178,9 +181,9 @@ export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks
     const effects = activeEffects.current;
     return () => {
       conn.off('data', handleData);
-      // Clean up all active effects on unmount
       effects.forEach((fn) => fn());
       effects.clear();
     };
   }, [conn, localPlayerId, stationElRef, callbacks]);
 }
+

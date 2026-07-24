@@ -52,8 +52,8 @@ export default function LotCanvas({
   // Local player position (for blackout fog-of-war)
   const localPos = allPositions[localPlayerId] ?? { x: mapWidth / 2, y: mapHeight / 2 };
 
-  // ── Camera setup ─────────────────────────────────────────────────────────
-  const VIEWPORT_WIDTH = 480;
+  // ── Camera setup (16:9 aspect ratio) ─────────────────────────────────────
+  const VIEWPORT_WIDTH = 640;
   const VIEWPORT_HEIGHT = 360;
   const SCALE = 1.6;
 
@@ -70,8 +70,7 @@ export default function LotCanvas({
 
   return (
     <div
-      className="relative overflow-hidden rounded-xl border border-gray-700 select-none"
-      style={{ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, background: '#0d0d0d', flexShrink: 0 }}
+      className="relative overflow-hidden w-full h-full select-none bg-[#090d14]"
     >
       <div
         className="absolute top-0 left-0"

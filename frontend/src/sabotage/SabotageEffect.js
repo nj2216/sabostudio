@@ -38,20 +38,37 @@ import { mirrorMode } from './effects/mirrorMode.js';
 import { ghostInput } from './effects/ghostInput.js';
 import { stationFreeze } from './effects/stationFreeze.js';
 import { earlySwap } from './effects/earlySwap.js';
+import { controlSwap } from './effects/controlSwap.js';
+
+// Assign point costs to each effect
+invertControls.cost = invertControls.cost ?? 30;
+wrongColors.cost = wrongColors.cost ?? 30;
+screenCrack.cost = screenCrack.cost ?? 40;
+stickyDrag.cost = stickyDrag.cost ?? 40;
+mirrorMode.cost = mirrorMode.cost ?? 40;
+nightVision.cost = nightVision.cost ?? 50;
+greaseScreen.cost = greaseScreen.cost ?? 50;
+blindfold.cost = blindfold.cost ?? 60;
+fakePopup.cost = fakePopup.cost ?? 60;
+ghostInput.cost = ghostInput.cost ?? 70;
+stationFreeze.cost = stationFreeze.cost ?? 70;
+earlySwap.cost = earlySwap.cost ?? 100;
+controlSwap.cost = controlSwap.cost ?? 100;
 
 /** @type {SabotageEffect[]} */
 export const ALL_EFFECTS = [
-  greaseScreen,
   invertControls,
-  blindfold,
-  fakePopup,
-  screenCrack,
-  nightVision,
   wrongColors,
+  screenCrack,
   stickyDrag,
   mirrorMode,
+  nightVision,
+  greaseScreen,
+  blindfold,
+  fakePopup,
   ghostInput,
   stationFreeze,
+  controlSwap,
   earlySwap,
 ];
 
@@ -74,3 +91,4 @@ export function randomEffect(category) {
     : ALL_EFFECTS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
+

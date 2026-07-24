@@ -75,6 +75,17 @@ function WireCutter({ isControlling, onSolve }) {
           </button>
         ))}
       </div>
+      {failed && (
+        <button
+          onClick={() => {
+            setWireState(wires.map((w) => ({ ...w, cut: false })));
+            setFailed(false);
+          }}
+          className="mt-2 text-xs text-yellow-400 border border-yellow-500/40 px-2 py-1 rounded bg-yellow-950/40 hover:bg-yellow-900/60 transition-colors w-full font-bold"
+        >
+          🔄 RESET WIRES & RETRY
+        </button>
+      )}
     </div>
   );
 }

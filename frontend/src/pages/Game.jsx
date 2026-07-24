@@ -1,34 +1,23 @@
 /**
  * frontend/src/pages/Game.jsx
  *
- * Main game screen for Sabotage Studio.
+ * Main game screen for Sabotage Studio — Points-based Task & Sabotage mode.
  *
- * Responsibilities:
- *   - Renders "The Lot" map with LotCanvas (free-roam WASD movement).
- *   - Manages the station-swap engine (useStationSwap + startSwapScheduler).
- *   - Opens station overlays when a player enters a task room and presses E.
- *   - Applies sabotage effects received from the host (useSabotageReceiver).
- *   - Host shows a Director HUD: Director Tokens + sabotage controls.
- *   - Handles Studio Crisis co-op events (power-outage, fire-alarm).
- *
- * Props:
- *   peer          — import('peerjs').Peer
- *   playerId      — string
- *   playerName    — string
- *   isHost        — boolean
- *   players       — [{ id, name, isHost, peerId }]
- *   conn          — DataConnection | null   (guest's connection to host; null for host)
- *   broadcast     — Function | null         (host's broadcast fn; null for guest)
- *   connections   — Map | null              (host's connections map; null for guest)
+ * Features:
+ *   - Renders "The Lot" top-down map with LotCanvas (WASD movement).
+ *   - Every player completes tasks at station terminals to earn +100 PTS.
+ *   - Leaderboard tracks player points in real-time.
+ *   - Every player can open the Sabotage Shop to spend points on sabotages against opponents.
+ *   - Control Swap Sabotage: Swaps control inputs of two players while keeping camera locked to each player's avatar.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LotCanvas from '../map/LotCanvas.jsx';
 import { useTaskZoneTrigger } from '../map/useTaskZoneTrigger.js';
 import { usePlayerMovement } from '../lib/playerMovement.js';
-import { startSwapScheduler, useStationSwap } from '../lib/stationSwap.js';
-import { createSabotageDeck, useSabotageReceiver } from '../sabotage/SabotageDeck.js';
+import { createSabotageBroadcaster, useSabotageReceiver } from '../sabotage/SabotageDeck.js';
 import { ALL_EFFECTS } from '../sabotage/SabotageEffect.js';
+import { sendMessage } from '../lib/peer.js';
 import BombSet from '../stations/BombSet/index.jsx';
 import Kitchen from '../stations/Kitchen/index.jsx';
 import TestTrack from '../stations/TestTrack/index.jsx';
@@ -46,16 +35,13 @@ const STATION_COMPONENTS = {
   'editing-bay': EditingBay,
 };
 
-// IDs of rooms that have a task
-const TASK_STATION_IDS = Object.keys(STATION_COMPONENTS);
-
 // Build walkable rectangles from map layout (rooms + corridors)
 const WALKABLE_RECTS = [
   ...layout.rooms.map((r) => r.bounds),
   ...layout.corridors.map((c) => c.bounds),
 ];
 
-/** Palette cycling for player avatar colours — defined at module scope to avoid recreation on each render. */
+/** Palette cycling for player avatar colours */
 const PLAYER_COLOURS = [
   'text-purple-400', 'text-blue-400', 'text-green-400', 'text-yellow-400',
   'text-red-400', 'text-pink-400', 'text-teal-400', 'text-orange-400',
@@ -65,19 +51,19 @@ const PLAYER_COLOURS = [
 
 const CRISIS_MESSAGES = {
   'power-outage': {
-    title: '⚡ POWER OUTAGE!',
-    body: 'Emergency power only. All players: tap together on the countdown or the whole lobby loses points!',
-    colour: '#facc15',
+    title: '⚡ POWER OUTAGE CRISIS',
+    body: 'Emergency power active. All operators: vision restricted for 8 seconds!',
+    colour: '#ffb703',
   },
   'fire-alarm': {
-    title: '🔥 FIRE ALARM!',
-    body: "GET OUT! Everyone return to Craft Services immediately or your task won't count!",
-    colour: '#ef4444',
+    title: '🔥 FIRE ALARM ALERT',
+    body: 'CRITICAL HAZARD! Vacate immediately and return to safety!',
+    colour: '#ff0055',
   },
   'take-too-many': {
-    title: '🎬 RESHOOT!',
-    body: "Too many sabotages! Everyone must complete a quick co-op reshoot to reset the tension.",
-    colour: '#a855f7',
+    title: '🎬 EMERGENCY RESHOOT',
+    body: 'Sabotage threshold exceeded! Execute emergency reshoot sequence.',
+    colour: '#9d4edd',
   },
 };
 
@@ -86,127 +72,176 @@ function StudioCrisisOverlay({ type, onDismiss }) {
   if (!info) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div
-        className="max-w-sm w-full rounded-2xl p-6 text-center shadow-2xl"
-        style={{ background: '#111', border: `2px solid ${info.colour}` }}
+        className="hud-container hud-cut-corner max-w-md w-full p-6 text-center shadow-[0_0_40px_rgba(255,0,85,0.4)] flex flex-col items-center gap-4"
+        style={{ borderColor: info.colour }}
       >
-        <p className="text-2xl font-extrabold mb-2" style={{ color: info.colour }}>
+        <div className="flex items-center gap-2 font-mono text-xs tracking-widest text-slate-400">
+          <span className="w-2 h-2 rounded-full animate-ping" style={{ background: info.colour }} />
+          STUDIO CRISIS MATRIX TRIGGERED
+        </div>
+        <h2 className="font-head text-2xl font-extrabold tracking-wider" style={{ color: info.colour }}>
           {info.title}
-        </p>
-        <p className="text-gray-300 text-sm mb-4">{info.body}</p>
+        </h2>
+        <p className="font-sub text-slate-200 text-sm leading-relaxed">{info.body}</p>
         <button
           onClick={onDismiss}
-          className="px-6 py-2 rounded-xl font-bold text-black"
-          style={{ background: info.colour }}
+          className="fire-button mt-2"
+          style={{ background: info.colour, color: '#000' }}
         >
-          OK
+          ACKNOWLEDGE & DISMISS
         </button>
       </div>
     </div>
   );
 }
 
-// ── Swap countdown banner ──────────────────────────────────────────────────
+// ── Control Swap Warning Banner ──────────────────────────────────────────────
 
-function SwapCountdown({ countdown, viewingStationId, controllingStationId }) {
-  const secs = Math.ceil(countdown / 1000);
-  const urgent = secs <= 5 && secs > 0;
-
+function ControlSwapBanner({ targetName, remainingSecs }) {
   return (
-    <div
-      className="flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium"
-      style={{ background: urgent ? '#7f1d1d' : '#1a1a1a', transition: 'background 0.3s' }}
-    >
-      <span className="text-gray-400">
-        👁️ <span className="text-white">{viewingStationId ?? '—'}</span>
-        {' '}|{' '}
-        🎮 <span className="text-white">{controllingStationId ?? '—'}</span>
-      </span>
-      {countdown > 0 && (
-        <span className={urgent ? 'text-red-400 font-bold animate-pulse' : 'text-gray-500'}>
-          Swap in {secs}s
-        </span>
-      )}
+    <div className="hud-container flex items-center justify-between px-4 py-2 text-xs font-mono border-x-0 border-t-0 border-b-neon-amber bg-amber-950/90 text-amber-200 shadow-[0_0_20px_rgba(255,183,3,0.4)] animate-pulse">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">🔄</span>
+        <div>
+          <span className="font-bold text-white uppercase">CONTROL SWAP ACTIVE!</span>
+          <span className="ml-2 text-amber-300">You are controlling <b className="text-white underline">{targetName}</b>'s movement!</span>
+        </div>
+      </div>
+      <div className="font-bold text-neon-amber">
+        REVERT IN: {remainingSecs}S
+      </div>
     </div>
   );
 }
 
-// ── Director HUD ───────────────────────────────────────────────────────────
+// ── Sabotage Shop Modal ─────────────────────────────────────────────────────
 
-function DirectorHUD({ deck, players, onCrisis }) {
-  const [tokens, setTokens] = useState(deck.tokensLeft);
+function SabotageShopModal({ points, players, localPlayerId, onFireSabotage, onClose }) {
+  const [activeTab, setActiveTab] = useState('ALL');
   const [selectedEffect, setSelectedEffect] = useState(ALL_EFFECTS[0]?.id ?? '');
-  const [selectedTarget, setSelectedTarget] = useState(players[0]?.id ?? '');
+
+  const opponents = useMemo(() => players.filter((p) => p.id !== localPlayerId), [players, localPlayerId]);
+  const [selectedTarget, setSelectedTarget] = useState(opponents[0]?.id ?? '');
+
+  // Keep target valid if players list updates
+  useEffect(() => {
+    if (!opponents.some((p) => p.id === selectedTarget) && opponents.length > 0) {
+      setSelectedTarget(opponents[0].id);
+    }
+  }, [opponents, selectedTarget]);
+
+  const categories = ['ALL', 'VISUAL', 'INPUT', 'SOCIAL', 'STRUCTURAL'];
+  const filteredEffects = ALL_EFFECTS.filter(
+    (e) => activeTab === 'ALL' || e.category.toUpperCase() === activeTab
+  );
+
+  const currentEffectObj = ALL_EFFECTS.find((e) => e.id === selectedEffect);
+  const cost = currentEffectObj?.cost ?? 50;
+  const canAfford = points >= cost;
 
   function fire() {
-    if (!selectedEffect || !selectedTarget) return;
-    const ok = deck.fire(selectedEffect, selectedTarget, 'any');
-    if (ok) setTokens(deck.tokensLeft);
+    if (!selectedEffect) return;
+    onFireSabotage(selectedEffect, selectedTarget);
   }
 
   return (
-    <div className="bg-gray-900 border border-yellow-700 rounded-xl p-3 text-xs">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-extrabold text-yellow-400 text-sm">🎬 Director HUD</h3>
-        <span className="text-yellow-300 font-bold">
-          {tokens} Token{tokens !== 1 ? 's' : ''} left
-        </span>
-      </div>
-
-      {/* Effect picker */}
-      <div className="mb-2">
-        <label className="text-gray-400 block mb-1">Sabotage Effect</label>
-        <select
-          value={selectedEffect}
-          onChange={(e) => setSelectedEffect(e.target.value)}
-          className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
-        >
-          {ALL_EFFECTS.map((e) => (
-            <option key={e.id} value={e.id}>
-              [{e.category}] {e.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Target picker */}
-      <div className="mb-2">
-        <label className="text-gray-400 block mb-1">Target Player</label>
-        <select
-          value={selectedTarget}
-          onChange={(e) => setSelectedTarget(e.target.value)}
-          className="w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-xs"
-        >
-          {players.filter((p) => !p.isHost).map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <button
-        onClick={fire}
-        disabled={tokens <= 0}
-        className="w-full py-1.5 rounded font-bold text-black disabled:opacity-40 mb-2"
-        style={{ background: '#facc15' }}
-      >
-        🎯 Fire Token ({tokens} left)
-      </button>
-
-      {/* Studio Crisis buttons */}
-      <div className="border-t border-gray-700 pt-2">
-        <p className="text-gray-500 mb-1">Studio Crisis</p>
-        <div className="flex gap-1 flex-wrap">
-          {Object.keys(CRISIS_MESSAGES).map((type) => (
-            <button
-              key={type}
-              onClick={() => onCrisis(type)}
-              className="px-2 py-1 rounded text-white text-xs"
-              style={{ background: '#4a1d96' }}
-            >
-              {CRISIS_MESSAGES[type].title.split(' ')[0]}
+    <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="hud-container hud-cut-corner max-w-xl w-full p-0 shadow-[0_0_50px_rgba(0,243,255,0.25)] border-neon-cyan/50 flex flex-col max-h-[90vh]">
+        <div className="container-header py-3 px-4 flex items-center justify-between">
+          <div className="container-title font-mono text-sm text-neon-cyan flex items-center gap-2">
+            <span className="status-indicator bg-neon-cyan shadow-[0_0_8px_var(--neon-cyan)]" />
+            ⚡ SABOTAGE CONSOLE & SHOP
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="font-mono text-xs text-neon-amber bg-amber-950/60 border border-neon-amber/40 px-3 py-1 font-bold rounded">
+              YOUR POINTS: {points} PTS
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-white font-mono text-sm">
+              ✕
             </button>
-          ))}
+          </div>
+        </div>
+
+        <div className="p-4 flex flex-col gap-4 overflow-y-auto">
+          {/* Category Tabs */}
+          <div className="flex gap-1 overflow-x-auto pb-1">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveTab(cat)}
+                className={`tab-btn text-xs py-1 px-3 ${activeTab === cat ? 'active' : ''}`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Sabotage Effect Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+            {filteredEffects.map((eff) => {
+              const effCost = eff.cost ?? 50;
+              const isSelected = selectedEffect === eff.id;
+              const isAffordable = points >= effCost;
+
+              return (
+                <div
+                  key={eff.id}
+                  onClick={() => setSelectedEffect(eff.id)}
+                  className={`p-2.5 border rounded cursor-pointer transition-all flex flex-col justify-between text-xs ${isSelected ? 'bg-cyan-950/40 border-neon-cyan shadow-[0_0_12px_rgba(0,243,255,0.3)] text-white' : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'}`}
+                >
+                  <div className="flex items-center justify-between font-bold mb-1">
+                    <span className="truncate">{eff.name}</span>
+                    <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded font-bold ${isAffordable ? 'bg-amber-950/80 text-neon-amber border border-neon-amber/40' : 'bg-slate-800 text-slate-500'}`}>
+                      {effCost} PTS
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed mb-2">
+                    {eff.description || 'Apply sabotage disruption against opponent.'}
+                  </p>
+                  <div className="flex items-center justify-between text-[9px] font-mono text-slate-500">
+                    <span className="uppercase">{eff.category}</span>
+                    <span>{eff.durationMs ? `${eff.durationMs / 1000}S DURATION` : 'INSTANT'}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Target Selection */}
+          <div className="flex flex-col gap-1.5 border-t border-slate-800 pt-3">
+            <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest">
+              SELECT TARGET OPPONENT
+            </span>
+            {opponents.length === 0 ? (
+              <p className="text-xs text-slate-500 italic">No opponents connected — wait for other players to join.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {opponents.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelectedTarget(p.id)}
+                    className={`p-2 border rounded transition-all cursor-pointer flex items-center gap-2 text-xs ${selectedTarget === p.id ? 'bg-amber-950/40 border-neon-amber text-white shadow-[0_0_10px_rgba(255,183,3,0.2)]' : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                  >
+                    <div className={`w-6 h-6 rounded flex items-center justify-center font-head font-bold text-[10px] ${selectedTarget === p.id ? 'bg-neon-amber text-black' : 'bg-slate-800 text-slate-300'}`}>
+                      {p.name?.[0]?.toUpperCase() ?? '?'}
+                    </div>
+                    <span className="font-semibold truncate">{p.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Fire Sabotage Button */}
+          <button
+            onClick={fire}
+            disabled={!canAfford || !selectedEffect || (selectedEffect !== 'controlSwap' && opponents.length > 0 && !selectedTarget)}
+            className={`fire-button mt-1 py-3 text-xs tracking-wider font-bold uppercase transition-all ${canAfford ? 'bg-neon-red text-white shadow-[0_0_20px_rgba(255,0,85,0.4)] hover:brightness-110' : 'bg-slate-800 text-slate-500 cursor-not-allowed border-slate-700'}`}
+          >
+            {canAfford ? `🎯 EXECUTE SABOTAGE (${cost} PTS)` : `❌ NEED ${cost} PTS (HAVE ${points} PTS)`}
+          </button>
         </div>
       </div>
     </div>
@@ -223,25 +258,68 @@ export default function Game({
   players,
   conn,
   broadcast,
-  // connections — reserved for future host-migration use
   onMessage,
-  swapSettings,
 }) {
-  // ── Station overlay ──────────────────────────────────────────────────────
+  // ── Station overlay state & Escape key handler ────────────────────────────
   const [activeStationId, setActiveStationId] = useState(null);
   const stationElRef = useRef(null);
 
-  // ── Blackout / vent seal (Director map effects) ──────────────────────────
-  const [blackout, setBlackout] = useState(false);
-  const [ventSealed] = useState(false);
-  const [lockedRooms] = useState([]);
+  // ── Points & Scores State ─────────────────────────────────────────────────
+  const [scores, setScores] = useState(() => {
+    const init = {};
+    players.forEach((p) => { init[p.id] = 0; });
+    return init;
+  });
+  const scoresRef = useRef(scores);
+  useEffect(() => { scoresRef.current = scores; }, [scores]);
 
-  // ── Studio Crisis ────────────────────────────────────────────────────────
+  // Keep scores updated when new players arrive
+  useEffect(() => {
+    setScores((prev) => {
+      const updated = { ...prev };
+      players.forEach((p) => {
+        if (updated[p.id] === undefined) updated[p.id] = 0;
+      });
+      return updated;
+    });
+  }, [players]);
+
+  // ── Toast Notification state ──────────────────────────────────────────────
+  const [toast, setToast] = useState(null);
+
+  function showToast(msg, duration = 3000) {
+    setToast(msg);
+    setTimeout(() => setToast(null), duration);
+  }
+
+  // ── UI Overlay Toggles ────────────────────────────────────────────────────
+  const [showSabotageShop, setShowSabotageShop] = useState(false);
+  const [showRoster, setShowRoster] = useState(false);
+
+  // ── Blackout / Map Crisis state ──────────────────────────────────────────
+  const [blackout, setBlackout] = useState(false);
   const [crisis, setCrisis] = useState(null);
+
+  // ── Control Swap state ────────────────────────────────────────────────────
+  const [controlTargetId, setControlTargetId] = useState(null);
+  const [controlSwapInfo, setControlSwapInfo] = useState(null);
+  const controlSwapTimerRef = useRef(null);
+
+  // Close station terminal on ESC key
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === 'Escape' && activeStationId) {
+        setActiveStationId(null);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeStationId]);
 
   // ── Player movement ──────────────────────────────────────────────────────
   const { localPos, allPositions, setBroadcast, receiveGuestMove } = usePlayerMovement({
     playerId,
+    controlTargetId,
     isHost,
     conn,
     initialPos: layout.spawnPoint,
@@ -258,182 +336,394 @@ export default function Game({
     localPos,
     rooms: layout.rooms,
     onEnterRoom: useCallback((roomId, stationId) => {
-      if (stationId) setActiveStationId(stationId);
-    }, []),
+      if (stationId && !activeStationId) {
+        setActiveStationId(stationId);
+      }
+    }, [activeStationId]),
   });
 
-  // ── Station swap (client hook) ───────────────────────────────────────────
-  const { viewingStationId, controllingStationId, countdown, setHostMapping } = useStationSwap(
-    isHost ? null : conn,
-    playerId,
-    null,
+  // ── Sabotage Broadcaster (Host) ──────────────────────────────────────────
+  const sabotageBroadcasterRef = useRef(null);
+  useEffect(() => {
+    if (isHost && broadcast) {
+      sabotageBroadcasterRef.current = createSabotageBroadcaster(
+        broadcast,
+        () => scoresRef.current,
+        setScores,
+        players,
+      );
+    }
+  }, [isHost, broadcast, players]);
+
+  // ── Control Swap Trigger Handler ─────────────────────────────────────────
+  const handleControlSwapEvent = useCallback(
+    ({ playerAId, playerBId, playerAName, playerBName, durationMs }) => {
+      let targetId = null;
+      let targetName = null;
+
+      if (playerId === playerAId) {
+        targetId = playerBId;
+        targetName = playerBName;
+      } else if (playerId === playerBId) {
+        targetId = playerAId;
+        targetName = playerAName;
+      }
+
+      if (targetId) {
+        setControlTargetId(targetId);
+        showToast(`🔄 CONTROL SWAP! You are controlling ${targetName}!`, 4000);
+
+        let remaining = Math.ceil(durationMs / 1000);
+        setControlSwapInfo({ targetName, remainingSecs: remaining });
+
+        if (controlSwapTimerRef.current) clearInterval(controlSwapTimerRef.current);
+        controlSwapTimerRef.current = setInterval(() => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(controlSwapTimerRef.current);
+            setControlTargetId(null);
+            setControlSwapInfo(null);
+            showToast('🔄 Control Swap ended. Controls restored to normal.');
+          } else {
+            setControlSwapInfo({ targetName, remainingSecs: remaining });
+          }
+        }, 1000);
+      } else {
+        showToast(`⚡ Control Swap activated between ${playerAName} and ${playerBName}!`);
+      }
+    },
+    [playerId]
   );
 
-  // ── Station swap (host) ──────────────────────────────────────────────────
-  const swapSchedulerRef = useRef(null);
-
-  useEffect(() => {
-    if (!isHost) return;
-    const playerIds = players.map((p) => p.id);
-    const { stop, triggerNow } = startSwapScheduler(
-      broadcast,
-      playerIds,
-      TASK_STATION_IDS,
-      swapSettings?.minMs,
-      swapSettings?.maxMs,
-      (mapping, delay) => {
-        setHostMapping(mapping[playerId], delay);
-      }
-    );
-    swapSchedulerRef.current = { stop, triggerNow };
-    return () => stop();
-  }, [isHost, broadcast, players, swapSettings, playerId, setHostMapping]);
-
-  // ── Sabotage receiver (guests) ───────────────────────────────────────────
-  const sabotageCallbacks = useMemo(() => ({
-    onEarlySwap: () => swapSchedulerRef.current?.triggerNow(),
-    onCrisis: (type) => setCrisis(type),
-  }), []);
+  // ── Sabotage Receiver (Client & Host listener) ───────────────────────────
+  const sabotageCallbacks = useMemo(
+    () => ({
+      onControlSwap: handleControlSwapEvent,
+      onCrisis: (type) => {
+        setCrisis(type);
+        if (type === 'power-outage') {
+          setBlackout(true);
+          setTimeout(() => setBlackout(false), 8000);
+        }
+      },
+      onSabotageApplied: (payload) => {
+        if (payload?.targetPlayerId === playerId) {
+          showToast(`⚠️ Sabotage applied to you by ${payload.buyerName || 'an opponent'}!`);
+        }
+      },
+    }),
+    [handleControlSwapEvent, playerId]
+  );
 
   useSabotageReceiver(isHost ? null : conn, playerId, stationElRef, sabotageCallbacks);
 
-  // ── Director deck (host) ─────────────────────────────────────────────────
-  const deckRef = useRef(null);
-  if (isHost && !deckRef.current && broadcast) {
-    deckRef.current = createSabotageDeck(broadcast);
-  }
-
-  // ── Host: handle guest messages (player-move + any future types) ─────────
+  // ── Network Messages (Host side) ──────────────────────────────────────────
   useEffect(() => {
     if (!isHost || !onMessage) return;
 
+    // Handle guest movement
     onMessage('player-move', (conn, payload) => {
-      const canonicalId = players.find(p => p.peerId === conn.peer)?.id;
-      if (canonicalId) {
-        receiveGuestMove(canonicalId, payload);
+      const canonicalSenderId = players.find((p) => p.peerId === conn.peer)?.id;
+      if (!canonicalSenderId) return;
+
+      const targetId = payload?.targetId || canonicalSenderId;
+      const pos = payload?.pos || payload;
+      if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+        receiveGuestMove(targetId, pos);
       }
     });
-  }, [isHost, onMessage, players, receiveGuestMove]);
 
-  // ── Director map effects via crisis / lockdown ───────────────────────────
-  function handleCrisis(type) {
-    if (broadcast) broadcast({ type: 'studio-crisis', payload: { type } });
-    setCrisis(type);
-    if (type === 'fire-alarm') {
-      // Visual: blackout + fire alarm crisis — handled client-side in overlay
+    // Handle task completions from guests
+    onMessage('task-complete', (conn, payload) => {
+      const canonicalId = payload?.playerId || players.find((p) => p.peerId === conn.peer)?.id;
+      const pts = payload?.pts || 100;
+      if (canonicalId) {
+        setScores((prev) => {
+          const updated = { ...prev, [canonicalId]: (prev[canonicalId] ?? 0) + pts };
+          broadcast?.({ type: 'score-update', payload: { scores: updated } });
+          return updated;
+        });
+      }
+    });
+
+    // Handle sabotage purchases from guests
+    onMessage('buy-sabotage', (conn, payload) => {
+      const buyerId = players.find((p) => p.peerId === conn.peer)?.id;
+      if (buyerId && sabotageBroadcasterRef.current) {
+        sabotageBroadcasterRef.current.fireSabotage(
+          buyerId,
+          payload.effectId,
+          payload.targetPlayerId,
+          payload.stationId
+        );
+      }
+    });
+  }, [isHost, onMessage, players, receiveGuestMove, broadcast]);
+
+  // ── Network Messages (Guest side) ─────────────────────────────────────────
+  useEffect(() => {
+    if (isHost || !conn) return;
+
+    function handleData(raw) {
+      let msg;
+      try {
+        msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch {
+        return;
+      }
+
+      if (msg.type === 'score-update') {
+        if (msg.payload?.scores) {
+          setScores(msg.payload.scores);
+        }
+      }
+      if (msg.type === 'control-swap') {
+        handleControlSwapEvent(msg.payload);
+      }
     }
-    if (type === 'power-outage') {
-      setBlackout(true);
-      setTimeout(() => setBlackout(false), 8000);
+
+    conn.on('data', handleData);
+    return () => conn.off('data', handleData);
+  }, [isHost, conn, handleControlSwapEvent]);
+
+  // ── Task Solve Action ────────────────────────────────────────────────────
+  function handleTaskSolve(pts = 100) {
+    showToast(`🎯 TASK COMPLETED! +${pts} POINTS AWARDED!`);
+
+    setScores((prev) => {
+      const current = prev[playerId] ?? 0;
+      const updated = { ...prev, [playerId]: current + pts };
+
+      if (isHost && broadcast) {
+        broadcast({ type: 'score-update', payload: { scores: updated } });
+      } else if (conn) {
+        sendMessage(conn, 'task-complete', { playerId, pts, stationId: activeStationId });
+      }
+
+      return updated;
+    });
+
+    // Close terminal after brief delay so defused message renders
+    setTimeout(() => {
+      setActiveStationId(null);
+    }, 1200);
+  }
+
+  // ── Sabotage Purchase Action ─────────────────────────────────────────────
+  function handleFireSabotage(effectId, targetPlayerId) {
+    if (isHost && sabotageBroadcasterRef.current) {
+      const ok = sabotageBroadcasterRef.current.fireSabotage(
+        playerId,
+        effectId,
+        targetPlayerId,
+        activeStationId || 'any'
+      );
+      if (ok) {
+        showToast('🎯 Sabotage executed successfully!');
+        setShowSabotageShop(false);
+      } else {
+        showToast('❌ Not enough points!');
+      }
+    } else if (!isHost && conn) {
+      const effObj = ALL_EFFECTS.find((e) => e.id === effectId);
+      const cost = effObj?.cost ?? 50;
+      if ((scores[playerId] ?? 0) < cost) {
+        showToast('❌ Not enough points!');
+        return;
+      }
+
+      sendMessage(conn, 'buy-sabotage', {
+        buyerId: playerId,
+        effectId,
+        targetPlayerId,
+        stationId: activeStationId || 'any',
+      });
+      showToast('🎯 Sabotage request sent!');
+      setShowSabotageShop(false);
     }
   }
 
   // ── Active station component ─────────────────────────────────────────────
   const StationComp = activeStationId ? STATION_COMPONENTS[activeStationId] : null;
-  // A player controls the active station if:
-  //   (1) no active station — default, nothing to control
-  //   (2) the swap mapping says this player controls this exact station
-  //   (3) the host has no explicit controlling assignment yet (initial state)
-  const isControllingActive =
-    !activeStationId ||
-    controllingStationId === activeStationId ||
-    (!controllingStationId && isHost);
+
+  const myPoints = scores[playerId] ?? 0;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="text-purple-400 font-extrabold">🎮 Sabotage Studio</span>
-          {isHost && <span className="text-xs text-yellow-400 bg-yellow-900/30 px-2 py-0.5 rounded">DIRECTOR</span>}
+    <div className="h-screen max-h-screen overflow-hidden flex flex-col items-center justify-center p-2 sm:p-4 bg-bg-void relative z-10">
+      {/* Toast Notification Banner */}
+      {toast && (
+        <div className="fixed top-4 z-50 bg-slate-900 border border-neon-cyan text-neon-cyan px-4 py-2 font-mono text-xs font-bold rounded shadow-[0_0_20px_rgba(0,243,255,0.4)] animate-bounce">
+          {toast}
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-400">
-          <span>{playerName}</span>
-          <span>|</span>
-          <span>{players.length} player{players.length !== 1 ? 's' : ''}</span>
-        </div>
-      </div>
+      )}
 
-      {/* Swap status bar */}
-      <div className="px-4 py-1 bg-gray-950 border-b border-gray-800 flex-shrink-0">
-        <SwapCountdown
-          countdown={countdown}
-          viewingStationId={viewingStationId}
-          controllingStationId={controllingStationId}
-        />
-      </div>
-
-      {/* Main content */}
-      <div className="flex flex-1 gap-4 p-4 overflow-auto">
-        {/* Map column */}
-        <div className="flex-shrink-0">
+      {/* ── Single 16:9 Among Us Stage Container ────────────────────────────── */}
+      <div className="w-full max-w-5xl aspect-video relative hud-container hud-cut-corner overflow-hidden flex flex-col shadow-[0_0_50px_rgba(0,243,255,0.15)] border-neon-cyan/40">
+        
+        {/* Layer 0: Main Camera Feed Viewport (Map Canvas) */}
+        <div className="absolute inset-0 w-full h-full z-0">
           <LotCanvas
             allPositions={allPositions}
             localPlayerId={playerId}
             players={players}
             nearbyRoom={nearbyRoom}
-            lockedRooms={lockedRooms}
+            lockedRooms={[]}
             blackout={blackout}
-            ventSealed={ventSealed}
-            controllingStationId={controllingStationId}
+            ventSealed={false}
           />
-          <p className="text-center text-xs text-gray-600 mt-1">
-            WASD / ↑↓←→ · E to enter station
-          </p>
         </div>
 
-        {/* Right column: station + director HUD */}
-        <div className="flex flex-col gap-3 flex-1 min-w-0">
-          {/* Station overlay */}
-          {activeStationId ? (
-            <div className="relative flex-1" ref={stationElRef}>
-              {/* Close button */}
-              <button
-                onClick={() => setActiveStationId(null)}
-                className="absolute top-2 right-2 z-10 text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
-              >
-                ✕ Leave station
-              </button>
-              {StationComp && (
-                <StationComp
-                  isControlling={isControllingActive}
-                  onSolve={() => console.log(`[Game] Station ${activeStationId} solved by ${playerId}`)}
-                />
-              )}
+        {/* Layer 10: Top HUD Navigation & Leaderboard Bar */}
+        <div className="absolute top-0 inset-x-0 z-10 flex flex-col">
+          <div className="top-hud py-1.5 px-4 bg-slate-950/90 border-b border-neon-cyan/20 backdrop-blur-sm flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="brand-logo text-base">
+                SABOTAGE <span>STUDIO</span>
+              </h1>
+              <div className="flex items-center gap-1.5 font-mono text-[9px] text-neon-red font-bold">
+                <span className="w-2 h-2 rounded-full bg-neon-red animate-ping" />
+                CAM-01 ● LIVE
+              </div>
             </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center rounded-xl border border-gray-800 text-gray-600 text-sm">
-              Walk to a station and press <kbd className="mx-1 px-1.5 py-0.5 bg-gray-800 rounded text-gray-300 font-mono text-xs">E</kbd> to enter
-            </div>
-          )}
 
-          {/* Director HUD (host only) */}
-          {isHost && deckRef.current && (
-            <DirectorHUD
-              deck={deckRef.current}
-              players={players}
-              onCrisis={handleCrisis}
+            {/* Live Player Score HUD Pill */}
+            <div className="flex items-center gap-3">
+              <div className="font-mono text-xs text-neon-amber bg-amber-950/80 border border-neon-amber/50 px-3 py-1 font-bold rounded flex items-center gap-2">
+                <span>⭐ MY POINTS:</span>
+                <span className="text-white text-sm font-extrabold">{myPoints} PTS</span>
+              </div>
+
+              <div className="font-mono text-[10px] text-slate-300 hidden sm:block">
+                OPERATOR: <b className="text-neon-cyan">{playerName}</b> {isHost ? '👑' : ''}
+              </div>
+            </div>
+          </div>
+
+          {/* Control Swap Active Warning Bar */}
+          {controlSwapInfo && (
+            <ControlSwapBanner
+              targetName={controlSwapInfo.targetName}
+              remainingSecs={controlSwapInfo.remainingSecs}
             />
           )}
+        </div>
 
-          {/* Player list sidebar */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-xs">
-            <p className="text-gray-500 mb-2 font-semibold uppercase tracking-wider">Players</p>
-            <ul className="space-y-1">
-              {players.map((p, i) => (
-                <li key={p.id} className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full bg-current ${PLAYER_COLOURS[i % PLAYER_COLOURS.length]}`} />
-                  <span className={p.id === playerId ? 'font-bold text-white' : 'text-gray-300'}>
-                    {p.name} {p.isHost ? '👑' : ''} {p.id === playerId ? '(you)' : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
+        {/* Layer 10: Bottom Controls Bar & Action Prompts */}
+        <div className="absolute bottom-3 inset-x-4 z-10 flex items-center justify-between pointer-events-none">
+          {/* Controls Hints */}
+          <div className="pointer-events-auto bg-slate-950/80 border border-slate-800 backdrop-blur-sm px-3 py-1.5 font-mono text-[10px] text-slate-400 flex items-center gap-3">
+            <span>NAV: <b className="text-white">WASD / ARROWS</b></span>
+            <span>TASK TERMINAL: <b className="text-neon-cyan">KEY E</b></span>
+          </div>
+
+          {/* Station Enter Action Prompt */}
+          {nearbyRoom && nearbyRoom.stationId && !activeStationId && (
+            <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 bottom-0">
+              <button
+                onClick={() => setActiveStationId(nearbyRoom.stationId)}
+                className="btn-cyan font-head text-xs tracking-wider py-2 px-5 animate-bounce shadow-[0_0_25px_rgba(0,243,255,0.6)] flex items-center gap-2"
+              >
+                <span>⚡ START TASK: {nearbyRoom.name.toUpperCase()}</span>
+                <span className="bg-black text-neon-cyan px-2 py-0.5 font-mono text-[11px] font-bold border border-neon-cyan">
+                  PRESS E
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Floating UI Buttons */}
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              onClick={() => setShowRoster((prev) => !prev)}
+              className={`icon-btn font-mono text-xs flex items-center gap-1.5 ${showRoster ? 'border-neon-cyan bg-neon-cyan/20 text-white' : ''}`}
+            >
+              📊 LEADERBOARD ({players.length})
+            </button>
+
+            <button
+              onClick={() => setShowSabotageShop((prev) => !prev)}
+              className="fire-button font-mono text-xs py-1.5 px-3 bg-neon-red text-white font-bold flex items-center gap-1.5 shadow-[0_0_15px_rgba(255,0,85,0.4)]"
+            >
+              ⚡ SABOTAGE SHOP ({myPoints} PTS)
+            </button>
           </div>
         </div>
+
+        {/* Layer 30: Floating Leaderboard Panel */}
+        {showRoster && (
+          <div className="absolute top-16 right-4 z-30 w-72 hud-container hud-cut-corner p-0 shadow-[0_0_25px_rgba(0,243,255,0.2)] animate-fadeIn">
+            <div className="container-header py-1.5 px-3 flex items-center justify-between">
+              <div className="container-title text-xs font-mono text-neon-cyan">
+                🏆 LIVE OPERATOR RANKINGS
+              </div>
+              <button onClick={() => setShowRoster(false)} className="text-slate-400 hover:text-white text-xs">
+                ✕
+              </button>
+            </div>
+            <div className="p-3 max-h-56 overflow-y-auto">
+              <ul className="flex flex-col gap-1.5">
+                {[...players]
+                  .sort((a, b) => (scores[b.id] ?? 0) - (scores[a.id] ?? 0))
+                  .map((p, rank) => (
+                    <li
+                      key={p.id}
+                      className={`p-2 bg-slate-900/80 border flex items-center justify-between text-xs font-mono rounded ${p.id === playerId ? 'border-neon-cyan text-white' : 'border-slate-800 text-slate-400'}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-500 w-4">#{rank + 1}</span>
+                        <div className={`w-2.5 h-2.5 rounded-full bg-current ${PLAYER_COLOURS[rank % PLAYER_COLOURS.length]}`} />
+                        <span className="truncate max-w-[100px]">{p.name}</span>
+                        {p.id === playerId && <span className="text-[9px] text-neon-cyan font-bold">(YOU)</span>}
+                      </div>
+                      <span className="font-bold text-neon-amber">{scores[p.id] ?? 0} PTS</span>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Layer 40: Station Minigame Terminal Overlay */}
+        {activeStationId && (
+          <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+            <div className="hud-container hud-cut-corner max-w-xl w-full max-h-[92%] flex flex-col p-0 border-neon-cyan shadow-[0_0_50px_rgba(0,243,255,0.35)] relative" ref={stationElRef}>
+              <div className="container-header py-2 px-4 flex items-center justify-between">
+                <div className="container-title font-mono text-xs text-neon-cyan">
+                  <span className="status-indicator" />
+                  STATION TERMINAL // {activeStationId.toUpperCase()}
+                </div>
+                <button
+                  onClick={() => setActiveStationId(null)}
+                  className="icon-btn font-mono text-xs border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-black font-bold"
+                >
+                  ✕ LEAVE TERMINAL [ESC]
+                </button>
+              </div>
+              <div className="p-4 flex-1 overflow-auto flex flex-col items-center justify-center bg-slate-950/60">
+                {StationComp && (
+                  <StationComp
+                    isControlling={true}
+                    onSolve={handleTaskSolve}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Studio Crisis overlay */}
+      {/* Layer 45: Sabotage Shop Modal */}
+      {showSabotageShop && (
+        <SabotageShopModal
+          points={myPoints}
+          players={players}
+          localPlayerId={playerId}
+          onFireSabotage={handleFireSabotage}
+          onClose={() => setShowSabotageShop(false)}
+        />
+      )}
+
+      {/* Layer 50: Studio Crisis emergency modal */}
       {crisis && (
         <StudioCrisisOverlay type={crisis} onDismiss={() => setCrisis(null)} />
       )}

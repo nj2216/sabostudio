@@ -56,25 +56,28 @@ function isWalkable(px, py, walkableRects) {
 
 /**
  * @param {{
- *   playerId:      string,
- *   isHost:        boolean,
- *   conn:          import('peerjs').DataConnection | null,  // null for host
- *   initialPos:    { x: number, y: number },
- *   walkableRects: Array<{x1:number,y1:number,x2:number,y2:number}>,
+ *   playerId:        string,
+ *   controlTargetId?: string, // If control swapped, target player ID being controlled
+ *   isHost:          boolean,
+ *   conn:            import('peerjs').DataConnection | null,  // null for host
+ *   initialPos:      { x: number, y: number },
+ *   walkableRects:   Array<{x1:number,y1:number,x2:number,y2:number}>,
  * }} options
  * @returns {{
  *   localPos:         { x: number, y: number },
  *   allPositions:     Record<string, { x: number, y: number }>,
  *   setBroadcast:     (fn: Function) => void,
- *   receiveGuestMove: (fromId: string, pos: { x: number, y: number }) => void,
+ *   receiveGuestMove: (targetId: string, pos: { x: number, y: number }) => void,
  * }}
  */
-export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkableRects }) {
-  const [localPos, setLocalPos] = useState(initialPos);
+export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, initialPos, walkableRects }) {
+  const activeTargetId = controlTargetId || playerId;
+  const activeTargetRef = useRef(activeTargetId);
+  useEffect(() => { activeTargetRef.current = activeTargetId; }, [activeTargetId]);
+
   const [allPositions, setAllPositions] = useState({ [playerId]: initialPos });
 
   // Mutable refs — avoid stale closures in the interval
-  const localPosRef = useRef(initialPos);
   const allPositionsRef = useRef({ [playerId]: initialPos });
   const broadcastRef = useRef(null);
   const keysRef = useRef(new Set());
@@ -101,8 +104,10 @@ export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkable
   // Movement + send tick
   useEffect(() => {
     const id = setInterval(() => {
+      const targetId = activeTargetRef.current;
       const keys = keysRef.current;
-      const { x, y } = localPosRef.current;
+      const targetPos = allPositionsRef.current[targetId] || initialPos;
+      const { x, y } = targetPos;
 
       const up = keys.has('ArrowUp') || keys.has('w') || keys.has('W');
       const down = keys.has('ArrowDown') || keys.has('s') || keys.has('S');
@@ -114,10 +119,6 @@ export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkable
       const dx = (right ? SPEED : 0) - (left ? SPEED : 0);
       const dy = (down ? SPEED : 0) - (up ? SPEED : 0);
 
-      // Diagonal-first collision resolution: try the diagonal move first for
-      // smooth wall-sliding, then fall back to individual axes. The x-axis is
-      // checked before y, creating a slight horizontal bias in corners where
-      // both axes have different clearance — acceptable for a top-down game.
       let nx = x;
       let ny = y;
 
@@ -133,10 +134,7 @@ export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkable
       }
 
       const newPos = { x: nx, y: ny };
-      localPosRef.current = newPos;
-      setLocalPos(newPos);
-
-      const updated = { ...allPositionsRef.current, [playerId]: newPos };
+      const updated = { ...allPositionsRef.current, [targetId]: newPos };
       allPositionsRef.current = updated;
       setAllPositions(updated);
 
@@ -151,12 +149,12 @@ export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkable
           payload: { positions: updated },
         });
       } else if (!isHost && conn) {
-        sendMessage(conn, 'player-move', newPos);
+        sendMessage(conn, 'player-move', { targetId, pos: newPos });
       }
     }, TICK_MS);
 
     return () => clearInterval(id);
-  }, [playerId, isHost, conn]);
+  }, [playerId, isHost, conn, initialPos]);
 
   // Guest: receive 'position-update' from host
   useEffect(() => {
@@ -185,8 +183,8 @@ export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkable
    * Updates the host's canonical position table and rebroadcasts.
    */
   const receiveGuestMove = useCallback(
-    (fromId, pos) => {
-      const updated = { ...allPositionsRef.current, [fromId]: pos };
+    (targetId, pos) => {
+      const updated = { ...allPositionsRef.current, [targetId]: pos };
       allPositionsRef.current = updated;
       setAllPositions(updated);
       if (broadcastRef.current) {
@@ -199,5 +197,8 @@ export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkable
     [],
   );
 
+  const localPos = allPositions[playerId] || initialPos;
+
   return { localPos, allPositions, setBroadcast, receiveGuestMove };
 }
+

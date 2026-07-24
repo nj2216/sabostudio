@@ -207,124 +207,138 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   // ── Render ─────────────────────────────────────────────────────────────────
   if (gameStarting) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-6">
-        <h1 className="text-4xl font-extrabold text-yellow-400 animate-pulse">
-          🎬 Loading The Lot…
-        </h1>
-        <p className="text-gray-400 mt-4">
-          Heading to the studio…
-        </p>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
+        <div className="hud-container hud-cut-corner max-w-md w-full p-8 text-center flex flex-col items-center gap-4 border-neon-amber shadow-[0_0_30px_rgba(255,183,3,0.3)]">
+          <div className="w-12 h-12 border-4 border-neon-amber border-t-transparent rounded-full animate-spin" />
+          <h2 className="font-head text-2xl font-extrabold text-neon-amber tracking-wider animate-pulse">
+            INITIALIZING STUDIO LOT...
+          </h2>
+          <p className="font-mono text-xs text-slate-400 tracking-wider">
+            ESTABLISHING WEBRTC P2P CHANNELS & STATIONS
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-6">
-      {/* Header */}
-      <h1 className="text-4xl font-extrabold mb-1 text-purple-400 tracking-tight">
-        🎮 Sabotage Studio
-      </h1>
-      <p className="text-gray-500 mb-6 text-sm">
-        {isHost ? 'You are the host' : 'You joined as a guest'}
-        {!peerConnected && !isHost && (
-          <span className="ml-2 text-yellow-400">(connecting to host…)</span>
-        )}
-      </p>
-
-      {/* Room code display */}
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 mb-6 w-full max-w-md text-center">
-        <p className="text-gray-400 text-sm mb-2">Room Code</p>
-        <div className="flex items-center justify-center gap-3">
-          <span className="text-4xl font-mono font-bold text-white tracking-widest">
-            {code}
-          </span>
-          <button
-            onClick={handleCopyCode}
-            className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 transition-colors"
-          >
-            {copySuccess ? '✓ Copied!' : 'Copy'}
-          </button>
-        </div>
-        <p className="text-gray-500 text-xs mt-2">Share this code with friends to join</p>
-      </div>
-
-      {/* Player list */}
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md mb-6">
-        <h2 className="text-lg font-bold text-white mb-4">
-          Players ({players.length}/8)
-        </h2>
-        <ul className="space-y-2">
-          {players.map((p) => (
-            <li
-              key={p.id ?? p.peerId ?? p.name}
-              className="flex items-center gap-3 bg-gray-800 rounded-lg px-4 py-2"
-            >
-              {/* Avatar placeholder */}
-              <div className="w-8 h-8 rounded-full bg-purple-700 flex items-center justify-center text-sm font-bold">
-                {p.name?.[0]?.toUpperCase() ?? '?'}
-              </div>
-              <span className="text-white font-medium">{p.name}</span>
-              {p.isHost && (
-                <span className="ml-auto text-xs text-yellow-400 font-semibold">
-                  HOST
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-
-        {players.length < 2 && (
-          <p className="text-gray-500 text-sm mt-4 text-center">
-            Waiting for more players to join…
-          </p>
-        )}
-      </div>
-
-      {/* Host Settings */}
-      {isHost && (
-        <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md mb-6">
-          <h2 className="text-lg font-bold text-white mb-4">Game Settings</h2>
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <label className="text-gray-400 text-sm block mb-1">Swap Min (s)</label>
-              <input
-                type="number"
-                value={swapMin}
-                onChange={(e) => setSwapMin(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
-            <div className="flex-1">
-              <label className="text-gray-400 text-sm block mb-1">Swap Max (s)</label>
-              <input
-                type="number"
-                value={swapMax}
-                onChange={(e) => setSwapMax(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
+    <div className="h-screen max-h-screen overflow-hidden flex flex-col items-center justify-between p-4 relative z-10">
+      {/* Top HUD Nav Header */}
+      <div className="w-full max-w-xl">
+        <div className="top-hud">
+          <div className="flex items-center gap-4">
+            <h1 className="brand-logo text-xl">
+              SABOTAGE <span>STUDIO</span>
+            </h1>
+            <span className="level-badge">LOBBY STAGE</span>
+          </div>
+          <div className="timecode-box">
+            {isHost ? 'ROOM HOST' : 'OPERATOR'}
           </div>
         </div>
-      )}
+      </div>
 
-      {/* Start Game button — host only */}
-      {isHost && (
-        <button
-          onClick={handleStartGame}
-          disabled={players.length < 2}
-          className="w-full max-w-md py-4 bg-green-600 hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold text-white text-lg transition-colors"
-        >
-          {players.length < 2
-            ? '⏳ Waiting for players…'
-            : '▶️ Start Game'}
-        </button>
-      )}
+      <div className="w-full max-w-xl flex-1 flex flex-col justify-center gap-4 min-h-0">
+        {/* Room code display card */}
+        <div className="hud-container hud-cut-corner p-0">
+          <div className="container-header">
+            <div className="container-title">
+              <span className="status-indicator bg-neon-amber shadow-[0_0_8px_var(--neon-amber)]" />
+              SESSION ACCESS CODE
+            </div>
+            <span className="container-subtitle">SHARE WITH PLAYERS</span>
+          </div>
+          <div className="p-5 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="font-mono text-3xl font-extrabold text-neon-amber tracking-[0.25em] drop-shadow-[0_0_10px_rgba(255,183,3,0.4)]">
+                {code}
+              </span>
+            </div>
+            <button onClick={handleCopyCode} className="icon-btn font-mono text-xs">
+              {copySuccess ? '✓ COPIED TO CLIPBOARD' : '📋 COPY CODE'}
+            </button>
+          </div>
+        </div>
 
-      {!isHost && (
-        <p className="text-gray-500 text-sm mt-2">
-          Waiting for the host to start the game…
-        </p>
-      )}
+        {/* Player roster card */}
+        <div className="hud-container hud-cut-corner p-0">
+          <div className="container-header">
+            <div className="container-title">
+              <span className="status-indicator" />
+              SQUAD ROSTER ({players.length}/8)
+            </div>
+            {!peerConnected && !isHost && (
+              <span className="font-mono text-xs text-neon-amber animate-pulse">CONNECTING TO HOST...</span>
+            )}
+          </div>
+          <div className="p-5 flex flex-col gap-3">
+            <ul className="flex flex-col gap-2">
+              {players.map((p) => (
+                <li
+                  key={p.id ?? p.peerId ?? p.name}
+                  className="flex items-center justify-between p-3 bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded flex items-center justify-center font-head font-bold text-xs ${p.isHost ? 'bg-neon-purple text-white shadow-[0_0_8px_var(--neon-purple)]' : 'bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/40'}`}>
+                      {p.name?.[0]?.toUpperCase() ?? '?'}
+                    </div>
+                    <span className="font-sub font-semibold text-base text-slate-100">{p.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {p.isHost ? (
+                      <span className="font-mono text-[10px] bg-neon-purple/20 border border-neon-purple text-neon-purple px-2 py-0.5 tracking-wider font-bold">
+                        HOST
+                      </span>
+                    ) : (
+                      <span className="font-mono text-[10px] bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan px-2 py-0.5 tracking-wider">
+                        OPERATOR
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {players.length < 2 && (
+              <div className="p-3 bg-amber-950/20 border border-neon-amber/30 text-neon-amber font-mono text-xs text-center tracking-wider">
+                WAITING FOR AT LEAST 2 PLAYERS TO LAUNCH MISSION...
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Mission Gameplay Intel */}
+        <div className="hud-container hud-cut-corner p-0">
+          <div className="container-header">
+            <div className="container-title">
+              <span className="status-indicator bg-neon-cyan" />
+              GAMEPLAY OBJECTIVE
+            </div>
+            <span className="container-subtitle">POINTS & SABOTAGE MODE</span>
+          </div>
+          <div className="p-4 text-xs font-sub text-slate-300 flex flex-col gap-2 leading-relaxed">
+            <p>🎯 Complete station minigames around the lot to earn <b className="text-neon-amber">+100 PTS</b> each.</p>
+            <p>⚡ Spend your points in the <b className="text-neon-red">SABOTAGE SHOP</b> to disrupt opponents.</p>
+            <p>🔄 Use <b className="text-white">Control Swap</b> (100 PTS) to hijack an opponent's controls while keeping your camera locked on your avatar!</p>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        {isHost ? (
+          <button
+            onClick={handleStartGame}
+            disabled={players.length < 2}
+            className="btn-green w-full mt-2"
+          >
+            {players.length < 2 ? '⏳ WAITING FOR OPERATORS...' : '▶️ LAUNCH MISSION SESSION'}
+          </button>
+        ) : (
+          <div className="p-4 bg-slate-900/50 border border-slate-800 text-slate-400 font-mono text-xs text-center tracking-wider">
+            WAITING FOR THE HOST TO START THE GAME...
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+

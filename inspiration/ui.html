@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Sabotage Studio — Tactical Game HUD</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sabotage Studio Tactical Game Director Interface & HUD Console">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Orbitron:wght@500;600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-void: #06080c;
+            --panel-bg: rgba(15, 20, 28, 0.85);
+            --panel-bg-solid: #0f141c;
+            --panel-raised: rgba(24, 32, 45, 0.9);
+            --panel-border: rgba(0, 243, 255, 0.18);
+            --panel-border-bright: rgba(0, 243, 255, 0.5);
+
+            --neon-cyan: #00f3ff;
+            --neon-cyan-glow: rgba(0, 243, 255, 0.4);
+            --neon-amber: #ffb703;
+            --neon-amber-glow: rgba(255, 183, 3, 0.4);
+            --neon-red: #ff0055;
+            --neon-red-glow: rgba(255, 0, 85, 0.4);
+            --neon-green: #00ff9d;
+            --neon-green-glow: rgba(0, 255, 157, 0.4);
+            --neon-purple: #9d4edd;
+
+            --text-main: #e2e8f0;
+            --text-muted: #64748b;
+            --text-dim: #94a3b8;
+
+            --font-head: 'Orbitron', sans-serif;
+            --font-sub: 'Rajdhani', sans-serif;
+            --font-mono: 'Fira Code', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        html,
+        body {
+            background-color: var(--bg-void);
+            color: var(--text-main);
+            font-family: var(--font-sub);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Sci-fi Scanline & Grid Background */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background:
+                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg,
+                    rgba(0, 0, 0, 0.25) 0px,
+                    rgba(0, 0, 0, 0.25) 1px,
+                    transparent 1px,
+                    transparent 3px);
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0.6;
+        }
+
+        .hud-wrapper {
+            position: relative;
+            z-index: 1;
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* ---------- SCI-FI CONTAINER BASE ---------- */
+        .hud-container {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(12px);
+            position: relative;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(0, 243, 255, 0.03);
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .hud-container:hover {
+            border-color: rgba(0, 243, 255, 0.35);
+        }
+
+        /* Chamfered Sci-Fi Cut Corners */
+        .hud-cut-corner {
+            clip-path: polygon(0 0,
+                    calc(100% - 16px) 0,
+                    100% 16px,
+                    100% 100%,
+                    16px 100%,
+                    0 calc(100% - 16px));
+        }
+
+        /* Sci-Fi Decorative Brackets */
+        .hud-container::before,
+        .hud-container::after {
+            content: "";
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-color: var(--neon-cyan);
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        .hud-container::before {
+            top: -1px;
+            left: -1px;
+            border-top: 2px solid;
+            border-left: 2px solid;
+        }
+
+        .hud-container::after {
+            bottom: -1px;
+            right: -1px;
+            border-bottom: 2px solid;
+            border-right: 2px solid;
+        }
+
+        /* Container Header Bar */
+        .container-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: rgba(0, 243, 255, 0.04);
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .container-title {
+            font-family: var(--font-head);
+            font-size: 13px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .container-title .status-indicator {
+            width: 8px;
+            height: 8px;
+            background: var(--neon-cyan);
+            border-radius: 2px;
+            box-shadow: 0 0 8px var(--neon-cyan);
+        }
+
+        .container-subtitle {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+
+        /* ---------- TOP NAVIGATION HUD ---------- */
+        .top-hud {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            clip-path: polygon(0 0, 100% 0, calc(100% - 20px) 100%, 20px 100%);
+            border-bottom: 2px solid var(--neon-cyan);
+            background: linear-gradient(180deg, rgba(0, 243, 255, 0.08) 0%, rgba(15, 20, 28, 0.95) 100%);
+        }
+
+        .hud-brand {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .brand-logo {
+            font-family: var(--font-head);
+            font-size: 22px;
+            font-weight: 900;
+            letter-spacing: 3px;
+            color: #fff;
+            text-shadow: 0 0 12px var(--neon-cyan-glow);
+        }
+
+        .brand-logo span {
+            color: var(--neon-cyan);
+        }
+
+        .level-badge {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            background: rgba(0, 243, 255, 0.12);
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            padding: 3px 10px;
+            letter-spacing: 1px;
+            clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+        }
+
+        .exp-bar-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            width: 140px;
+        }
+
+        .exp-info {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--text-dim);
+        }
+
+        .exp-track {
+            height: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .exp-fill {
+            height: 100%;
+            width: 68%;
+            background: linear-gradient(90deg, var(--neon-cyan), var(--neon-green));
+            box-shadow: 0 0 8px var(--neon-cyan);
+        }
+
+        .top-stats {
+            display: flex;
+            align-items: center;
+            gap: 28px;
+        }
+
+        .hud-stat-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hud-stat-label {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .hud-stat-value {
+            font-family: var(--font-head);
+            font-size: 15px;
+            color: var(--text-main);
+            letter-spacing: 1px;
+        }
+
+        .hud-stat-value.cyan {
+            color: var(--neon-cyan);
+            text-shadow: 0 0 8px var(--neon-cyan-glow);
+        }
+
+        .hud-stat-value.green {
+            color: var(--neon-green);
+            text-shadow: 0 0 8px var(--neon-green-glow);
+        }
+
+        .timecode-box {
+            font-family: var(--font-mono);
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--neon-amber);
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--neon-amber-glow);
+            background: rgba(255, 183, 3, 0.08);
+            border: 1px solid rgba(255, 183, 3, 0.3);
+            padding: 4px 12px;
+        }
+
+        .hud-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .icon-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--panel-border);
+            color: var(--text-main);
+            padding: 6px 12px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .icon-btn:hover {
+            background: rgba(0, 243, 255, 0.15);
+            border-color: var(--neon-cyan);
+            color: #fff;
+            box-shadow: 0 0 10px var(--neon-cyan-glow);
+        }
+
+        /* ---------- MAIN GRID LAYOUT ---------- */
+        .hud-main-grid {
+            display: grid;
+            grid-template-columns: 1.6fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 1024px) {
+            .hud-main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .left-column,
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* ---------- GAME CANVAS VIEWPORT CONTAINER ---------- */
+        .viewport-container {
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .viewport-topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            background: rgba(0, 0, 0, 0.4);
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        .cam-id {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--neon-cyan);
+            letter-spacing: 1px;
+        }
+
+        .live-tag {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--font-head);
+            font-size: 11px;
+            color: var(--neon-red);
+            letter-spacing: 1px;
+        }
+
+        .live-pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--neon-red);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--neon-red);
+            animation: pulseDot 1.4s infinite ease-in-out;
+        }
+
+        @keyframes pulseDot {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.3;
+                transform: scale(0.85);
+            }
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #040609;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Interactive Viewport FX Layers */
+        .viewport-fx-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 5;
+            transition: all 0.3s ease;
+        }
+
+        .fx-grease {
+            background: radial-gradient(circle at 40% 40%, rgba(200, 180, 50, 0.45) 0%, rgba(120, 100, 20, 0.25) 45%, transparent 70%);
+            mix-blend-mode: color-burn;
+            backdrop-filter: blur(3px);
+            opacity: 0;
+        }
+
+        .fx-grease.active {
+            opacity: 1;
+        }
+
+        .fx-fog {
+            background: radial-gradient(circle at center, transparent 20%, rgba(5, 10, 15, 0.95) 75%);
+            opacity: 0;
+        }
+
+        .fx-fog.active {
+            opacity: 1;
+        }
+
+        .fx-flip {
+            transform: scaleY(-1);
+        }
+
+        /* HUD Canvas UI Overlays */
+        .radar-widget {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: rgba(5, 20, 25, 0.7);
+            border: 1px solid var(--neon-cyan);
+            box-shadow: 0 0 12px rgba(0, 243, 255, 0.2);
+            z-index: 10;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .radar-sweep {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg, rgba(0, 243, 255, 0.4) 0deg, transparent 60deg, transparent 360deg);
+            animation: radarSpin 4s linear infinite;
+        }
+
+        @keyframes radarSpin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .radar-blip {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--neon-green);
+            box-shadow: 0 0 6px var(--neon-green);
+        }
+
+        .radar-blip.host {
+            top: 35px;
+            left: 45px;
+            background: var(--neon-purple);
+            box-shadow: 0 0 6px var(--neon-purple);
+        }
+
+        .radar-blip.guest {
+            top: 60px;
+            left: 65px;
+            background: var(--neon-cyan);
+            box-shadow: 0 0 6px var(--neon-cyan);
+        }
+
+        .viewport-prompt {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(10, 15, 22, 0.85);
+            border: 1px solid var(--neon-cyan);
+            padding: 8px 18px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--neon-cyan);
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .key-cap {
+            background: var(--neon-cyan);
+            color: #000;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 2px;
+        }
+
+        .viewport-controls-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            background: rgba(10, 14, 20, 0.95);
+            border-top: 1px solid var(--panel-border);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+
+        .key-hint b {
+            color: var(--text-main);
+        }
+
+        /* ---------- EVENT LOG CONTAINER ---------- */
+        .log-container {
+            padding: 14px 16px;
+            max-height: 220px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-feed {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            overflow-y: auto;
+            max-height: 140px;
+            padding-right: 6px;
+        }
+
+        .log-feed::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .log-feed::-webkit-scrollbar-thumb {
+            background: var(--panel-border);
+        }
+
+        .log-entry {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-dim);
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.02);
+            border-left: 2px solid transparent;
+        }
+
+        .log-entry.info {
+            border-left-color: var(--neon-cyan);
+        }
+
+        .log-entry.warn {
+            border-left-color: var(--neon-amber);
+            color: var(--neon-amber);
+        }
+
+        .log-entry.alert {
+            border-left-color: var(--neon-red);
+            color: var(--neon-red);
+        }
+
+        .log-time {
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+
+        /* ---------- TACTICAL SABOTAGE CONSOLE CONTAINER ---------- */
+        .tactical-console {
+            padding: 16px;
+        }
+
+        .token-header-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+        }
+
+        .token-count-tag {
+            font-family: var(--font-head);
+            font-size: 12px;
+            color: var(--neon-amber);
+            background: rgba(255, 183, 3, 0.1);
+            border: 1px solid var(--neon-amber);
+            padding: 4px 10px;
+            letter-spacing: 1px;
+        }
+
+        /* Ability Category Tabs */
+        .tabs-header {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 14px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+            font-family: var(--font-head);
+            font-size: 11px;
+            letter-spacing: 1px;
+            padding: 8px 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .tab-btn:hover {
+            background: rgba(0, 243, 255, 0.08);
+            color: var(--text-main);
+        }
+
+        .tab-btn.active {
+            background: rgba(0, 243, 255, 0.15);
+            border-color: var(--neon-cyan);
+            color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+
+        /* Ability Select List */
+        .section-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .ability-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .ability-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--panel-border);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .ability-card:hover {
+            background: rgba(0, 243, 255, 0.05);
+            border-color: rgba(0, 243, 255, 0.4);
+        }
+
+        .ability-card.selected {
+            background: rgba(255, 0, 85, 0.1);
+            border-color: var(--neon-red);
+            box-shadow: 0 0 12px rgba(255, 0, 85, 0.25);
+        }
+
+        .ability-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .ability-radio {
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--text-muted);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .ability-card.selected .ability-radio {
+            border-color: var(--neon-red);
+            background: var(--neon-red);
+            box-shadow: 0 0 8px var(--neon-red);
+        }
+
+        .ability-name {
+            font-family: var(--font-sub);
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-main);
+        }
+
+        .ability-duration {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-dim);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 6px;
+        }
+
+        /* Target Selectors */
+        .target-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+
+        .target-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--panel-border);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .target-card:hover {
+            border-color: var(--neon-cyan);
+        }
+
+        .target-card.selected {
+            background: rgba(0, 243, 255, 0.1);
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 12px var(--neon-cyan-glow);
+        }
+
+        .target-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-head);
+            font-size: 12px;
+            font-weight: 700;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .target-avatar.host {
+            background: var(--neon-purple);
+            box-shadow: 0 0 8px var(--neon-purple);
+        }
+
+        .target-avatar.guest {
+            background: var(--neon-cyan);
+            color: #000;
+            box-shadow: 0 0 8px var(--neon-cyan);
+        }
+
+        .target-name {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 0.5px;
+        }
+
+        /* Fire Ability Button */
+        .fire-button {
+            width: 100%;
+            border: none;
+            background: linear-gradient(135deg, #ff0055 0%, #b8003c 100%);
+            color: #fff;
+            font-family: var(--font-head);
+            font-size: 16px;
+            letter-spacing: 2px;
+            padding: 14px 0;
+            cursor: pointer;
+            clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+            box-shadow: 0 4px 20px rgba(255, 0, 85, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .fire-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 25px rgba(255, 0, 85, 0.6);
+            background: linear-gradient(135deg, #ff2a70 0%, #d40045 100%);
+        }
+
+        .fire-button:active {
+            transform: translateY(1px);
+        }
+
+        .token-slots {
+            display: flex;
+            gap: 6px;
+            margin-top: 12px;
+        }
+
+        .token-slot {
+            flex: 1;
+            height: 6px;
+            background: var(--neon-amber);
+            box-shadow: 0 0 8px var(--neon-amber-glow);
+            transition: all 0.3s ease;
+        }
+
+        .token-slot.spent {
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: none;
+        }
+
+        /* ---------- CRISIS MATRIX CONTAINER ---------- */
+        .crisis-container {
+            padding: 16px;
+        }
+
+        .crisis-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .crisis-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--panel-border);
+            padding: 12px 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .crisis-btn:hover {
+            border-color: var(--neon-amber);
+            background: rgba(255, 183, 3, 0.08);
+        }
+
+        .crisis-btn.active {
+            border-color: var(--neon-red);
+            background: rgba(255, 0, 85, 0.15);
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.3);
+        }
+
+        .crisis-icon {
+            font-size: 20px;
+        }
+
+        .crisis-label {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .crisis-led {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .crisis-btn.armed .crisis-led {
+            background: var(--neon-green);
+            box-shadow: 0 0 6px var(--neon-green);
+        }
+
+        .crisis-btn.active .crisis-led {
+            background: var(--neon-red);
+            box-shadow: 0 0 8px var(--neon-red);
+            animation: pulseDot 0.8s infinite;
+        }
+
+        /* ---------- SQUAD ROSTER CONTAINER ---------- */
+        .roster-container {
+            padding: 16px;
+        }
+
+        .player-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .player-row:last-child {
+            border-bottom: none;
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .player-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--neon-green);
+            box-shadow: 0 0 6px var(--neon-green);
+        }
+
+        .player-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .player-name {
+            font-family: var(--font-sub);
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-main);
+        }
+
+        .player-hp-bar {
+            width: 90px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .player-hp-fill {
+            height: 100%;
+            width: 85%;
+            background: var(--neon-green);
+            box-shadow: 0 0 6px var(--neon-green-glow);
+        }
+
+        .player-hp-fill.guest {
+            width: 100%;
+            background: var(--neon-cyan);
+            box-shadow: 0 0 6px var(--neon-cyan-glow);
+        }
+
+        .player-role {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            letter-spacing: 1px;
+            color: var(--neon-amber);
+            border: 1px solid var(--neon-amber);
+            padding: 2px 6px;
+            text-transform: uppercase;
+        }
+
+        .player-role.talent {
+            color: var(--neon-cyan);
+            border-color: var(--neon-cyan);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="hud-wrapper">
+
+        <!-- TOP NAVIGATION HUD -->
+        <div class="top-hud">
+            <div class="hud-brand">
+                <div class="brand-logo">SABOTAGE <span>HUD</span></div>
+                <div class="level-badge">LVL 42</div>
+                <div class="exp-bar-wrap">
+                    <div class="exp-info">
+                        <span>EXP</span>
+                        <span>6,840 / 10,000</span>
+                    </div>
+                    <div class="exp-track">
+                        <div class="exp-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="top-stats">
+                <div class="hud-stat-box">
+                    <div class="hud-stat-label">MATCH PHASE</div>
+                    <div class="hud-stat-value cyan">PHASE 02</div>
+                </div>
+                <div class="hud-stat-box">
+                    <div class="hud-stat-label">FPS</div>
+                    <div class="hud-stat-value green" id="fpsDisplay">60</div>
+                </div>
+                <div class="hud-stat-box">
+                    <div class="hud-stat-label">PING</div>
+                    <div class="hud-stat-value">18ms</div>
+                </div>
+                <div class="timecode-box" id="timecode">00:14:22:07</div>
+            </div>
+
+            <div class="hud-actions">
+                <button class="icon-btn" id="sfxToggle">🔊 SFX ON</button>
+                <button class="icon-btn" id="resetFxBtn">↺ RESET FX</button>
+            </div>
+        </div>
+
+        <!-- MAIN GRID LAYOUT -->
+        <div class="hud-main-grid">
+
+            <!-- LEFT COLUMN: VIEWPORT & EVENT LOG -->
+            <div class="left-column">
+
+                <!-- CONTAINER 1: GAME VIEWPORT -->
+                <div class="hud-container hud-cut-corner viewport-container">
+                    <div class="viewport-topbar">
+                        <div class="cam-id">FEED // CAM-01 · SECTOR 04 · FLOOR 1</div>
+                        <div class="live-tag">
+                            <div class="live-pulse"></div> LIVE HUD STREAM
+                        </div>
+                    </div>
+
+                    <div class="canvas-wrapper">
+                        <canvas id="gameCanvas"></canvas>
+
+                        <!-- Visual Screen Effects Overlays -->
+                        <div class="viewport-fx-overlay fx-grease" id="fxGrease"></div>
+                        <div class="viewport-fx-overlay fx-fog" id="fxFog"></div>
+
+                        <!-- Mini-Map Radar -->
+                        <div class="radar-widget">
+                            <div class="radar-sweep"></div>
+                            <div class="radar-blip host"></div>
+                            <div class="radar-blip guest"></div>
+                        </div>
+
+                        <!-- Viewport Prompt -->
+                        <div class="viewport-prompt">
+                            <span>STATION 03 NEARBY</span>
+                            <span class="key-cap">E</span>
+                            <span>INTERACT</span>
+                        </div>
+                    </div>
+
+                    <div class="viewport-controls-bar">
+                        <div class="key-hint"><b>WASD / ARROWS</b> : Move Squad &nbsp;·&nbsp; <b>E</b> : Station
+                            Interaction &nbsp;·&nbsp; <b>1-3</b> : Select Ability</div>
+                        <div class="key-hint">ZONE: <b>SECTOR_DELTA</b></div>
+                    </div>
+                </div>
+
+                <!-- CONTAINER 2: EVENT LOG FEED -->
+                <div class="hud-container hud-cut-corner log-container">
+                    <div class="container-header" style="margin: -14px -16px 10px -16px;">
+                        <div class="container-title">
+                            <div class="status-indicator"></div> BATTLE & SYSTEM LOGS
+                        </div>
+                        <div class="container-subtitle">REALTIME FEED</div>
+                    </div>
+                    <div class="log-feed" id="logFeed">
+                        <div class="log-entry info">
+                            <span class="log-time">[14:22:07]</span>
+                            <span>System Initialized. Connected to Tactical Director Grid.</span>
+                        </div>
+                        <div class="log-entry info">
+                            <span class="log-time">[14:22:04]</span>
+                            <span>GUESTPLAYER reached Craft Services station.</span>
+                        </div>
+                        <div class="log-entry warn">
+                            <span class="log-time">[14:21:58]</span>
+                            <span>HOSTPLAYER targeted by Guest Sabotage.</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT COLUMN: CONTROL PANELS & SQUAD ROSTER -->
+            <div class="right-column">
+
+                <!-- CONTAINER 3: SABOTAGE CONSOLE -->
+                <div class="hud-container hud-cut-corner tactical-console">
+                    <div class="token-header-box">
+                        <div class="container-title">
+                            <div class="status-indicator"
+                                style="background:var(--neon-amber); box-shadow:0 0 8px var(--neon-amber);"></div>
+                            SABOTAGE CONSOLE
+                        </div>
+                        <div class="token-count-tag" id="tokenLabel">3 TOKENS LEFT</div>
+                    </div>
+
+                    <div class="tabs-header">
+                        <button class="tab-btn active" data-tab="visual">VISUAL</button>
+                        <button class="tab-btn" data-tab="audio">AUDIO</button>
+                        <button class="tab-btn" data-tab="input">INPUT</button>
+                    </div>
+
+                    <div class="section-label">Select Sabotage Ability</div>
+                    <div class="ability-list">
+                        <div class="ability-card selected" data-effect="grease" data-duration="02s">
+                            <div class="ability-left">
+                                <div class="ability-radio"></div>
+                                <div class="ability-name">Grease Screen</div>
+                            </div>
+                            <div class="ability-duration">02s</div>
+                        </div>
+                        <div class="ability-card" data-effect="flip" data-duration="05s">
+                            <div class="ability-left">
+                                <div class="ability-radio"></div>
+                                <div class="ability-name">Screen Flip</div>
+                            </div>
+                            <div class="ability-duration">05s</div>
+                        </div>
+                        <div class="ability-card" data-effect="fog" data-duration="08s">
+                            <div class="ability-left">
+                                <div class="ability-radio"></div>
+                                <div class="ability-name">Fog of War</div>
+                            </div>
+                            <div class="ability-duration">08s</div>
+                        </div>
+                    </div>
+
+                    <div class="section-label">Select Target Player</div>
+                    <div class="target-grid">
+                        <div class="target-card" data-target="HOSTPLAYER">
+                            <div class="target-avatar host">H</div>
+                            <div class="target-name">HOSTPLAYER</div>
+                        </div>
+                        <div class="target-card selected" data-target="GUESTPLAYER">
+                            <div class="target-avatar guest">G</div>
+                            <div class="target-name">GUESTPLAYER</div>
+                        </div>
+                    </div>
+
+                    <button class="fire-button" id="fireBtn">
+                        ◉ FIRE ABILITY <span style="font-size:12px; opacity:0.8;">[SPACE]</span>
+                    </button>
+
+                    <div class="token-slots" id="tokenSlots">
+                        <div class="token-slot"></div>
+                        <div class="token-slot"></div>
+                        <div class="token-slot"></div>
+                    </div>
+                </div>
+
+                <!-- CONTAINER 4: STUDIO CRISIS MATRIX -->
+                <div class="hud-container hud-cut-corner crisis-container">
+                    <div class="container-header" style="margin: -16px -16px 12px -16px;">
+                        <div class="container-title">
+                            <div class="status-indicator"
+                                style="background:var(--neon-red); box-shadow:0 0 8px var(--neon-red);"></div>
+                            STUDIO CRISIS MATRIX
+                        </div>
+                        <div class="container-subtitle">GLOBAL EVENT</div>
+                    </div>
+
+                    <div class="crisis-grid">
+                        <div class="crisis-btn armed" data-crisis="Power Cut">
+                            <div class="crisis-led"></div>
+                            <span class="crisis-icon">⚡</span>
+                            <span class="crisis-label">Power Cut</span>
+                        </div>
+                        <div class="crisis-btn armed" data-crisis="Fire Drill">
+                            <div class="crisis-led"></div>
+                            <span class="crisis-icon">🔥</span>
+                            <span class="crisis-label">Fire Drill</span>
+                        </div>
+                        <div class="crisis-btn" data-crisis="Cyber Glitch">
+                            <div class="crisis-led"></div>
+                            <span class="crisis-icon">📺</span>
+                            <span class="crisis-label">Glitch</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTAINER 5: SQUAD ROSTER -->
+                <div class="hud-container hud-cut-corner roster-container">
+                    <div class="container-header" style="margin: -16px -16px 12px -16px;">
+                        <div class="container-title">
+                            <div class="status-indicator"
+                                style="background:var(--neon-green); box-shadow:0 0 8px var(--neon-green);"></div>
+                            SQUAD ROSTER
+                        </div>
+                        <div class="container-subtitle">2 OPERATOR(S)</div>
+                    </div>
+
+                    <div class="player-row">
+                        <div class="player-info">
+                            <div class="player-dot"></div>
+                            <div class="player-details">
+                                <div class="player-name">HostPlayer <span
+                                        style="color:var(--text-muted); font-size:11px;">(You)</span></div>
+                                <div class="player-hp-bar">
+                                    <div class="player-hp-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="player-role">DIRECTOR</div>
+                    </div>
+
+                    <div class="player-row">
+                        <div class="player-info">
+                            <div class="player-dot"></div>
+                            <div class="player-details">
+                                <div class="player-name">GuestPlayer</div>
+                                <div class="player-hp-bar">
+                                    <div class="player-hp-fill guest"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="player-role talent">TALENT</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- CANVAS & GAME ENGINE INTERACTIVITY SCRIPT -->
+    <script>
+        // ---------- WEB AUDIO SFX SYNTHESIZER ----------
+        let sfxEnabled = true;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function playBeep(freq = 440, type = 'sine', duration = 0.08) {
+            if (!sfxEnabled) return;
+            try {
+                if (!audioCtx) audioCtx = new AudioCtx();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) { }
+        }
+
+        document.getElementById('sfxToggle').addEventListener('click', (e) => {
+            sfxEnabled = !sfxEnabled;
+            e.target.textContent = sfxEnabled ? '🔊 SFX ON' : '🔇 SFX OFF';
+            if (sfxEnabled) playBeep(600, 'square');
+        });
+
+        // ---------- TIMECODE & FPS ENGINE ----------
+        let frameCount = 22 * 30 + 7 + (14 * 60 * 30);
+        const timecodeEl = document.getElementById('timecode');
+        const fpsDisplay = document.getElementById('fpsDisplay');
+
+        setInterval(() => {
+            frameCount++;
+            const f = frameCount % 30;
+            const s = Math.floor(frameCount / 30) % 60;
+            const m = Math.floor(frameCount / 30 / 60) % 60;
+            const h = Math.floor(frameCount / 30 / 60 / 60);
+            const pad = n => String(n).padStart(2, '0');
+            timecodeEl.textContent = `${pad(h)}:${pad(m)}:${pad(s)}:${pad(f)}`;
+            fpsDisplay.textContent = Math.floor(58 + Math.random() * 3);
+        }, 1000 / 30);
+
+        // ---------- CANVAS GAME ENGINE ----------
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Game Entities
+        const hostPlayer = { x: 0.3, y: 0.5, vx: 0.002, targetX: 0.3, name: "HOSTPLAYER", color: "#9d4edd" };
+        const guestPlayer = { x: 0.7, y: 0.4, vx: -0.0015, targetX: 0.7, name: "GUESTPLAYER", color: "#00f3ff" };
+        let selectedTargetName = "GUESTPLAYER";
+        let activeEffect = "grease";
+
+        // Stations
+        const stations = [
+            { name: "CRAFT SERVICES", x: 0.25, y: 0.45 },
+            { name: "CONTROL PANEL", x: 0.50, y: 0.35 },
+            { name: "POWER RELAY", x: 0.75, y: 0.60 }
+        ];
+
+        // Animated Particles
+        const particles = Array.from({ length: 40 }, () => ({
+            x: Math.random(),
+            y: Math.random(),
+            speed: 0.0005 + Math.random() * 0.001,
+            size: 1 + Math.random() * 2
+        }));
+
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // 1. Draw Grid Ground
+            ctx.strokeStyle = "rgba(0, 243, 255, 0.07)";
+            ctx.lineWidth = 1;
+            const gridSize = 40;
+            for (let x = 0; x < w; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+            }
+            for (let y = 0; y < h; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+            }
+
+            // 2. Ambient Particles
+            particles.forEach(p => {
+                p.y -= p.speed;
+                if (p.y < 0) p.y = 1;
+                ctx.fillStyle = "rgba(0, 243, 255, 0.3)";
+                ctx.beginPath();
+                ctx.arc(p.x * w, p.y * h, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 3. Draw Stations
+            stations.forEach((st, idx) => {
+                const sx = st.x * w;
+                const sy = st.y * h;
+
+                // Glowing node box
+                ctx.fillStyle = "rgba(15, 25, 35, 0.8)";
+                ctx.strokeStyle = idx === 0 ? "rgba(255, 183, 3, 0.6)" : "rgba(0, 243, 255, 0.4)";
+                ctx.lineWidth = 2;
+                ctx.fillRect(sx - 45, sy - 25, 90, 50);
+                ctx.strokeRect(sx - 45, sy - 25, 90, 50);
+
+                // Station Label
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "10px 'Fira Code', monospace";
+                ctx.textAlign = "center";
+                ctx.fillText(st.name, sx, sy + 4);
+            });
+
+            // 4. Update & Draw Players
+            [hostPlayer, guestPlayer].forEach(p => {
+                p.x += p.vx;
+                if (p.x > 0.85 || p.x < 0.15) p.vx *= -1;
+
+                const px = p.x * w;
+                const py = p.y * h;
+
+                // Player Avatar Circle
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 12;
+                ctx.beginPath();
+                ctx.arc(px, py, 14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Inner Letter
+                ctx.fillStyle = "#000";
+                ctx.font = "bold 11px 'Orbitron', sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(p.name[0], px, py);
+
+                // Name Tag Above
+                ctx.fillStyle = "#e2e8f0";
+                ctx.font = "10px 'Fira Code', monospace";
+                ctx.fillText(p.name, px, py - 24);
+
+                // Target Reticle Over Selected Player
+                if (p.name === selectedTargetName) {
+                    ctx.strokeStyle = "#ff0055";
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 22, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // Reticle crosshairs
+                    ctx.beginPath();
+                    ctx.moveTo(px - 28, py); ctx.lineTo(px - 18, py);
+                    ctx.moveTo(px + 18, py); ctx.lineTo(px + 28, py);
+                    ctx.moveTo(px, py - 28); ctx.lineTo(px, py - 18);
+                    ctx.moveTo(px, py + 18); ctx.lineTo(px, py + 28);
+                    ctx.stroke();
+                }
+            });
+
+            requestAnimationFrame(drawGame);
+        }
+        requestAnimationFrame(drawGame);
+
+        // ---------- INTERACTION CONTROLS ----------
+
+        // Log Helper
+        const logFeed = document.getElementById('logFeed');
+        function addLog(text, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const time = timecodeEl.textContent;
+            entry.innerHTML = `<span class="log-time">[${time}]</span> <span>${text}</span>`;
+            logFeed.insertBefore(entry, logFeed.firstChild);
+        }
+
+        // Ability Card Selection
+        const abilityCards = document.querySelectorAll('.ability-card');
+        abilityCards.forEach(card => {
+            card.addEventListener('click', () => {
+                playBeep(520, 'sine');
+                abilityCards.forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                activeEffect = card.dataset.effect;
+            });
+        });
+
+        // Tab Selection
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                playBeep(650, 'triangle');
+                tabBtns.forEach(t => t.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Target Selection
+        const targetCards = document.querySelectorAll('.target-card');
+        targetCards.forEach(card => {
+            card.addEventListener('click', () => {
+                playBeep(480, 'sine');
+                targetCards.forEach(t => t.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedTargetName = card.dataset.target;
+                addLog(`Target lock shifted to ${selectedTargetName}`, 'info');
+            });
+        });
+
+        // Fire Ability Token
+        let tokensLeft = 3;
+        const fireBtn = document.getElementById('fireBtn');
+        const tokenLabel = document.getElementById('tokenLabel');
+        const tokenSlots = document.querySelectorAll('.token-slot');
+        const fxGrease = document.getElementById('fxGrease');
+        const fxFog = document.getElementById('fxFog');
+        const canvasWrapper = document.querySelector('.canvas-wrapper');
+
+        function triggerAbility() {
+            if (tokensLeft <= 0) {
+                playBeep(200, 'sawtooth', 0.2);
+                addLog(`OUT OF SABOTAGE TOKENS! Wait for recharge.`, 'alert');
+                return;
+            }
+
+            tokensLeft--;
+            playBeep(880, 'square', 0.15);
+            tokenLabel.textContent = `${tokensLeft} TOKENS LEFT`;
+            tokenSlots[tokensLeft].classList.add('spent');
+
+            addLog(`Fired [${activeEffect.toUpperCase()}] at ${selectedTargetName}!`, 'warn');
+
+            // Apply Visual FX
+            if (activeEffect === 'grease') {
+                fxGrease.classList.add('active');
+                setTimeout(() => fxGrease.classList.remove('active'), 2500);
+            } else if (activeEffect === 'fog') {
+                fxFog.classList.add('active');
+                setTimeout(() => fxFog.classList.remove('active'), 5000);
+            } else if (activeEffect === 'flip') {
+                canvasWrapper.classList.add('fx-flip');
+                setTimeout(() => canvasWrapper.classList.remove('fx-flip'), 4000);
+            }
+        }
+
+        fireBtn.addEventListener('click', triggerAbility);
+
+        // Crisis Buttons
+        const crisisBtns = document.querySelectorAll('.crisis-btn');
+        crisisBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const crisisName = btn.dataset.crisis;
+                btn.classList.toggle('active');
+                playBeep(300, 'sawtooth', 0.25);
+                addLog(`CRISIS EVENT: ${crisisName} initiated on set!`, 'alert');
+            });
+        });
+
+        // Reset FX Button
+        document.getElementById('resetFxBtn').addEventListener('click', () => {
+            playBeep(600, 'sine');
+            fxGrease.classList.remove('active');
+            fxFog.classList.remove('active');
+            canvasWrapper.classList.remove('fx-flip');
+            tokensLeft = 3;
+            tokenLabel.textContent = `3 TOKENS LEFT`;
+            tokenSlots.forEach(s => s.classList.remove('spent'));
+            addLog(`System reset. Tokens restored.`, 'info');
+        });
+
+        // Keyboard Shortcut Controls
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                triggerAbility();
+            } else if (e.key === '1') {
+                abilityCards[0].click();
+            } else if (e.key === '2') {
+                abilityCards[1].click();
+            } else if (e.key === '3') {
+                abilityCards[2].click();
+            } else if (e.key.toLowerCase() === 'e') {
+                playBeep(700, 'triangle');
+                addLog(`Interacted with station node.`, 'info');
+            }
+        });
+    </script>
+</body>
+
+</html>
