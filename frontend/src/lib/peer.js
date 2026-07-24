@@ -15,6 +15,12 @@
  *   'player-joined'       — guest -> host, payload: { name, peerId }
  *   'player-list-update'  — host -> all guests, payload: { players: [...] }
  *   'game-start'          — host -> all guests, payload: {}
+ *   'station-swap'        — host -> all guests, payload: { mapping, swapAt, nextSwapIn }
+ *   'player-move'         — guest -> host, payload: { x, y }
+ *   'position-update'     — host -> all guests, payload: { positions: { [playerId]: { x, y } } }
+ *   'sabotage-apply'      — host -> all guests, payload: { effectId, targetPlayerId, stationId, durationMs }
+ *   'sabotage-clear'      — host -> all guests, payload: { effectId, targetPlayerId }
+ *   'studio-crisis'       — host -> all guests, payload: { type }
  *   'ping'/'pong'         — heartbeat
  *
  * TODO (follow-up PRs):
