@@ -325,8 +325,14 @@ export default function Game({
 
   // ── Active station component ─────────────────────────────────────────────
   const StationComp = activeStationId ? STATION_COMPONENTS[activeStationId] : null;
+  // A player controls the active station if:
+  //   (1) no active station — default, nothing to control
+  //   (2) the swap mapping says this player controls this exact station
+  //   (3) the host has no explicit controlling assignment yet (initial state)
   const isControllingActive =
-    !activeStationId || controllingStationId === activeStationId || (!controllingStationId && isHost);
+    !activeStationId ||
+    controllingStationId === activeStationId ||
+    (!controllingStationId && isHost);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">

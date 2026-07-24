@@ -13,9 +13,18 @@ export const ghostInput = {
   durationMs: 15_000,
 
   apply(stationEl) {
-    const INTERVAL = 2500 + Math.random() * 1500; // 2.5–4 s
+    let timeoutId = null;
+    let active = true;
 
-    const id = setInterval(() => {
+    function scheduleNext() {
+      if (!active) return;
+      // Re-randomize the interval for each ghost click (2.5–4 s)
+      const delay = 2500 + Math.random() * 1500;
+      timeoutId = setTimeout(fireGhost, delay);
+    }
+
+    function fireGhost() {
+      if (!active) return;
       const rect = stationEl.getBoundingClientRect();
       const x = rect.left + Math.random() * rect.width;
       const y = rect.top + Math.random() * rect.height;
@@ -51,7 +60,11 @@ export const ghostInput = {
       if (target && stationEl.contains(target)) {
         target.dispatchEvent(clickEvt);
       }
-    }, INTERVAL);
+
+      scheduleNext();
+    }
+
+    scheduleNext();
 
     // Inject keyframe animation once
     if (!document.getElementById('ghost-pulse-style')) {
@@ -66,6 +79,9 @@ export const ghostInput = {
       document.head.appendChild(style);
     }
 
-    return () => clearInterval(id);
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
   },
 };

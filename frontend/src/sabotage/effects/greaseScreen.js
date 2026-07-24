@@ -3,9 +3,6 @@
  * Category: visual
  */
 
-/** Delay (ms) between each smudge blob in the trail. */
-const TRAIL_DELAY_MS = 80;
-
 /** @type {import('../SabotageEffect.js').SabotageEffect} */
 export const greaseScreen = {
   id: 'grease-screen',
@@ -43,27 +40,27 @@ export const greaseScreen = {
       return blob;
     });
 
-    let trailPositions = blobs.map(() => ({ x: 50, y: 50 }));
+    // Maintain a history of cursor positions — each blob snaps to a position
+    // from TRAIL_DELAY_MS * i ms ago, creating a genuine cascading smudge trail.
+    const history = [];
 
     function handleMove(e) {
       const rect = stationEl.getBoundingClientRect();
       const mx = ((e.clientX - rect.left) / rect.width) * 100;
       const my = ((e.clientY - rect.top) / rect.height) * 100;
+      history.unshift({ x: mx, y: my });
+      // Keep history length proportional to the number of blobs × delay buckets
+      if (history.length > blobs.length * 8) history.pop();
 
-      // Each blob trails the previous with increasing delay
-      trailPositions[0] = { x: mx, y: my };
+      // Render each blob at a staggered position from the history
       blobs.forEach((blob, i) => {
-        const pos = trailPositions[i];
-        blob.style.left = `${pos.x}%`;
-        blob.style.top = `${pos.y}%`;
-      });
-
-      // Shift trail positions with delay
-      setTimeout(() => {
-        for (let i = blobs.length - 1; i > 0; i--) {
-          trailPositions[i] = { ...trailPositions[i - 1] };
+        const histIdx = Math.min(i * 3, history.length - 1);
+        const pos = history[histIdx] ?? history[history.length - 1];
+        if (pos) {
+          blob.style.left = `${pos.x}%`;
+          blob.style.top = `${pos.y}%`;
         }
-      }, TRAIL_DELAY_MS * blobs.length);
+      });
     }
 
     stationEl.style.position = 'relative';

@@ -102,30 +102,34 @@ export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkable
   useEffect(() => {
     const id = setInterval(() => {
       const keys = keysRef.current;
-      let { x, y } = localPosRef.current;
-      let moved = false;
+      const { x, y } = localPosRef.current;
 
       const up = keys.has('ArrowUp') || keys.has('w') || keys.has('W');
       const down = keys.has('ArrowDown') || keys.has('s') || keys.has('S');
       const left = keys.has('ArrowLeft') || keys.has('a') || keys.has('A');
       const right = keys.has('ArrowRight') || keys.has('d') || keys.has('D');
 
-      const tryMove = (nx, ny) => {
-        if (isWalkable(nx, ny, walkableRef.current)) {
-          x = nx;
-          y = ny;
-          moved = true;
-        }
-      };
+      if (!up && !down && !left && !right) return;
 
-      if (up) tryMove(x, y - SPEED);
-      if (down) tryMove(x, y + SPEED);
-      if (left) tryMove(x - SPEED, y);
-      if (right) tryMove(x + SPEED, y);
+      const dx = (right ? SPEED : 0) - (left ? SPEED : 0);
+      const dy = (down ? SPEED : 0) - (up ? SPEED : 0);
 
-      if (!moved) return;
+      // Try diagonal first; fall back to individual axes on collision
+      let nx = x;
+      let ny = y;
 
-      const newPos = { x, y };
+      if (isWalkable(x + dx, y + dy, walkableRef.current)) {
+        nx = x + dx;
+        ny = y + dy;
+      } else if (dx !== 0 && isWalkable(x + dx, y, walkableRef.current)) {
+        nx = x + dx;
+      } else if (dy !== 0 && isWalkable(x, y + dy, walkableRef.current)) {
+        ny = y + dy;
+      } else {
+        return; // fully blocked
+      }
+
+      const newPos = { x: nx, y: ny };
       localPosRef.current = newPos;
       setLocalPos(newPos);
 

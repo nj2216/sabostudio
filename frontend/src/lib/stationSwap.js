@@ -50,6 +50,10 @@ function generateSwapMapping(playerIds, stationIds) {
   const n = shuffled.length;
   const mapping = {};
 
+  // When players > stations, multiple players wrap around to the same station.
+  // This is intentional: more players means more competition per station, which
+  // increases the social chaos — multiple viewers narrating at once. Any
+  // conflicting inputs from co-controllers both land on the same station state.
   playerIds.forEach((pid, i) => {
     const viewIdx = i % n;
     // Rotate by 1 — guarantees view ≠ control as long as n > 1

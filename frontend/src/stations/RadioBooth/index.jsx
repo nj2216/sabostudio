@@ -15,7 +15,7 @@ import { useRef, useState } from 'react';
 // ── Module 1: Frequency Tuning ─────────────────────────────────────────────
 
 function FrequencyTuning({ isControlling, onSolve }) {
-  const [target] = useState(() => Math.floor(Math.random() * 870) + 88); // 88–958 (FM/AM range)
+  const [target] = useState(() => Math.floor(Math.random() * 871) + 88); // 88–958 MHz (FM/AM range)
   const [freq, setFreq] = useState(500);
   const [solved, setSolved] = useState(false);
   const TOLERANCE = 5;
