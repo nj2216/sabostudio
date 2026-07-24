@@ -18,21 +18,31 @@ import { usePlayerMovement } from '../lib/playerMovement.js';
 import { applySabotageEffectLocally, createSabotageBroadcaster, useSabotageReceiver } from '../sabotage/SabotageDeck.js';
 import { ALL_EFFECTS } from '../sabotage/SabotageEffect.js';
 import { sendMessage } from '../lib/peer.js';
-import BombSet from '../stations/BombSet/index.jsx';
-import Kitchen from '../stations/Kitchen/index.jsx';
-import TestTrack from '../stations/TestTrack/index.jsx';
-import RadioBooth from '../stations/RadioBooth/index.jsx';
-import EditingBay from '../stations/EditingBay/index.jsx';
+import WireCutter from '../stations/WireCutter/index.jsx';
+import PattyFlipper from '../stations/PattyFlipper/index.jsx';
+import FrequencyTuner from '../stations/FrequencyTuner/index.jsx';
+import LaneWeaver from '../stations/LaneWeaver/index.jsx';
+import ChemicalMix from '../stations/ChemicalMix/index.jsx';
+import SafeCracker from '../stations/SafeCracker/index.jsx';
+import BugSwatter from '../stations/BugSwatter/index.jsx';
+import EspressoRush from '../stations/EspressoRush/index.jsx';
+import RocketLaunch from '../stations/RocketLaunch/index.jsx';
+import KeyDuplicator from '../stations/KeyDuplicator/index.jsx';
 import layout from '../map/lotLayout.json';
 
 // ── Station component map ──────────────────────────────────────────────────
 
 const STATION_COMPONENTS = {
-  'bomb-set':    BombSet,
-  'kitchen':     Kitchen,
-  'test-track':  TestTrack,
-  'radio-booth': RadioBooth,
-  'editing-bay': EditingBay,
+  'bomb-set':      WireCutter,
+  'patty-flipper': PattyFlipper,
+  'radio-booth':   FrequencyTuner,
+  'lane-weaver':   LaneWeaver,
+  'chem-lab':      ChemicalMix,
+  'safe-vault':    SafeCracker,
+  'bug-swat':      BugSwatter,
+  'espresso-bar':  EspressoRush,
+  'rocket-launch': RocketLaunch,
+  'key-shop':      KeyDuplicator,
 };
 
 // Build walkable rectangles from map layout (rooms + corridors)

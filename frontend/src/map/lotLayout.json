@@ -1,85 +1,125 @@
 {
-  "mapWidth": 640,
-  "mapHeight": 480,
-  "spawnPoint": { "x": 320, "y": 315 },
+  "mapWidth": 960,
+  "mapHeight": 640,
+  "spawnPoint": { "x": 480, "y": 300 },
   "rooms": [
     {
-      "id": "editing-bay",
-      "name": "Editing Bay",
-      "stationId": "editing-bay",
-      "color": "#1e3a5f",
-      "bounds": { "x1": 245, "y1": 10, "x2": 395, "y2": 80 },
-      "interactZone": { "x1": 260, "y1": 15, "x2": 380, "y2": 75 },
-      "label": "🎬 Editing Bay",
-      "notes": "Furthest from spawn — high-density, save for late session"
+      "id": "bomb-set",
+      "name": "Bomb Set",
+      "stationId": "bomb-set",
+      "color": "#3a1a1a",
+      "bounds": { "x1": 50, "y1": 50, "x2": 210, "y2": 150 },
+      "interactZone": { "x1": 60, "y1": 60, "x2": 200, "y2": 140 },
+      "label": "💣 Bomb Set",
+      "notes": "Wire Cutter task"
+    },
+    {
+      "id": "patty-flipper",
+      "name": "Burger Grill",
+      "stationId": "patty-flipper",
+      "color": "#3a2a1a",
+      "bounds": { "x1": 270, "y1": 50, "x2": 430, "y2": 150 },
+      "interactZone": { "x1": 280, "y1": 60, "x2": 420, "y2": 140 },
+      "label": "🍔 Burger Grill",
+      "notes": "Patty Flipper task"
     },
     {
       "id": "radio-booth",
-      "name": "Radio Booth",
+      "name": "Sound Studio",
       "stationId": "radio-booth",
-      "color": "#2d1b4e",
-      "bounds": { "x1": 10, "y1": 165, "x2": 130, "y2": 235 },
-      "interactZone": { "x1": 20, "y1": 175, "x2": 120, "y2": 225 },
-      "label": "📻 Radio Booth",
-      "notes": "Small enclosed room — good for audio sabotage"
+      "color": "#1b2a3e",
+      "bounds": { "x1": 530, "y1": 50, "x2": 690, "y2": 150 },
+      "interactZone": { "x1": 540, "y1": 60, "x2": 680, "y2": 140 },
+      "label": "📻 Sound Studio",
+      "notes": "Frequency Tuner task"
     },
     {
-      "id": "hallway",
-      "name": "Hallway",
-      "stationId": null,
-      "color": "#1a1a2e",
-      "bounds": { "x1": 245, "y1": 165, "x2": 395, "y2": 235 },
-      "interactZone": null,
-      "label": "Hallway"
-    },
-    {
-      "id": "test-track",
+      "id": "lane-weaver",
       "name": "Test Track",
-      "stationId": "test-track",
+      "stationId": "lane-weaver",
       "color": "#1a3a1a",
-      "bounds": { "x1": 510, "y1": 165, "x2": 630, "y2": 235 },
-      "interactZone": { "x1": 520, "y1": 175, "x2": 620, "y2": 225 },
+      "bounds": { "x1": 750, "y1": 50, "x2": 910, "y2": 150 },
+      "interactZone": { "x1": 760, "y1": 60, "x2": 900, "y2": 140 },
       "label": "🏎️ Test Track",
-      "notes": "Long room shape — visually reinforces driving"
+      "notes": "Lane Weaver task"
+    },
+    {
+      "id": "chem-lab",
+      "name": "Chem Lab",
+      "stationId": "chem-lab",
+      "color": "#2e1b3e",
+      "bounds": { "x1": 50, "y1": 240, "x2": 210, "y2": 340 },
+      "interactZone": { "x1": 60, "y1": 250, "x2": 200, "y2": 330 },
+      "label": "🧪 Chem Lab",
+      "notes": "Chemical Mix task"
     },
     {
       "id": "craft-services",
       "name": "Craft Services",
       "stationId": null,
       "color": "#2d2d2d",
-      "bounds": { "x1": 205, "y1": 280, "x2": 435, "y2": 350 },
+      "bounds": { "x1": 370, "y1": 240, "x2": 590, "y2": 340 },
       "interactZone": null,
       "label": "☕ Craft Services",
-      "isSpawn": true,
-      "notes": "Central hub — Studio Crisis events fire here"
+      "isSpawn": true
     },
     {
-      "id": "kitchen",
-      "name": "Kitchen",
-      "stationId": "kitchen",
-      "color": "#3a2a1a",
-      "bounds": { "x1": 45, "y1": 385, "x2": 165, "y2": 455 },
-      "interactZone": { "x1": 55, "y1": 395, "x2": 155, "y2": 445 },
-      "label": "🍳 Kitchen",
-      "notes": "Tutorial room — right off spawn, low stakes"
+      "id": "safe-vault",
+      "name": "Bank Vault",
+      "stationId": "safe-vault",
+      "color": "#3e321b",
+      "bounds": { "x1": 750, "y1": 240, "x2": 910, "y2": 340 },
+      "interactZone": { "x1": 760, "y1": 250, "x2": 900, "y2": 330 },
+      "label": "🔐 Bank Vault",
+      "notes": "Safe Cracker task"
     },
     {
-      "id": "bomb-set",
-      "name": "Bomb Set",
-      "stationId": "bomb-set",
-      "color": "#3a1a1a",
-      "bounds": { "x1": 475, "y1": 385, "x2": 595, "y2": 455 },
-      "interactZone": { "x1": 485, "y1": 395, "x2": 585, "y2": 445 },
-      "label": "💣 Bomb Set",
-      "notes": "3-4 modules, fits 2-3 players — forces traffic decisions"
+      "id": "bug-swat",
+      "name": "Backlot Garden",
+      "stationId": "bug-swat",
+      "color": "#1b3e36",
+      "bounds": { "x1": 50, "y1": 490, "x2": 210, "y2": 590 },
+      "interactZone": { "x1": 60, "y1": 500, "x2": 200, "y2": 580 },
+      "label": "🦟 Backlot Garden",
+      "notes": "Bug Swatter task"
+    },
+    {
+      "id": "espresso-bar",
+      "name": "Espresso Bar",
+      "stationId": "espresso-bar",
+      "color": "#3e2a1b",
+      "bounds": { "x1": 270, "y1": 490, "x2": 430, "y2": 590 },
+      "interactZone": { "x1": 280, "y1": 500, "x2": 420, "y2": 580 },
+      "label": "☕ Espresso Bar",
+      "notes": "Espresso Rush task"
+    },
+    {
+      "id": "rocket-launch",
+      "name": "Command Center",
+      "stationId": "rocket-launch",
+      "color": "#3e1b1b",
+      "bounds": { "x1": 530, "y1": 490, "x2": 690, "y2": 590 },
+      "interactZone": { "x1": 540, "y1": 500, "x2": 680, "y2": 580 },
+      "label": "🚀 Command Center",
+      "notes": "Rocket Launch task"
+    },
+    {
+      "id": "key-shop",
+      "name": "Prop Shop",
+      "stationId": "key-shop",
+      "color": "#1b333e",
+      "bounds": { "x1": 750, "y1": 490, "x2": 910, "y2": 590 },
+      "interactZone": { "x1": 760, "y1": 500, "x2": 900, "y2": 580 },
+      "label": "🔑 Prop Shop",
+      "notes": "Key Duplicator task"
     },
     {
       "id": "vent-a",
       "name": "Staff Vent A",
       "stationId": null,
       "color": "#111",
-      "bounds": { "x1": 45, "y1": 455, "x2": 105, "y2": 480 },
-      "interactZone": { "x1": 45, "y1": 455, "x2": 105, "y2": 480 },
+      "bounds": { "x1": 50, "y1": 590, "x2": 110, "y2": 615 },
+      "interactZone": { "x1": 50, "y1": 590, "x2": 110, "y2": 615 },
       "isVent": true,
       "ventPair": "vent-b",
       "label": "🌀 Vent A"
@@ -89,60 +129,28 @@
       "name": "Staff Vent B",
       "stationId": null,
       "color": "#111",
-      "bounds": { "x1": 535, "y1": 455, "x2": 595, "y2": 480 },
-      "interactZone": { "x1": 535, "y1": 455, "x2": 595, "y2": 480 },
+      "bounds": { "x1": 850, "y1": 590, "x2": 910, "y2": 615 },
+      "interactZone": { "x1": 850, "y1": 590, "x2": 910, "y2": 615 },
       "isVent": true,
       "ventPair": "vent-a",
       "label": "🌀 Vent B"
     }
   ],
   "corridors": [
-    {
-      "id": "corridor-editing-hallway",
-      "bounds": { "x1": 302, "y1": 80, "x2": 338, "y2": 165 }
-    },
-    {
-      "id": "corridor-radio-hallway",
-      "bounds": { "x1": 130, "y1": 190, "x2": 245, "y2": 210 }
-    },
-    {
-      "id": "corridor-hallway-testtrack",
-      "bounds": { "x1": 395, "y1": 190, "x2": 510, "y2": 210 }
-    },
-    {
-      "id": "corridor-hallway-craft",
-      "bounds": { "x1": 302, "y1": 235, "x2": 338, "y2": 280 }
-    },
-    {
-      "id": "corridor-craft-kitchen",
-      "bounds": { "x1": 45, "y1": 350, "x2": 205, "y2": 390 }
-    },
-    {
-      "id": "corridor-craft-bombset",
-      "bounds": { "x1": 435, "y1": 350, "x2": 595, "y2": 390 }
-    },
-    {
-      "id": "corridor-kitchen-venta",
-      "bounds": { "x1": 45, "y1": 455, "x2": 105, "y2": 460 }
-    },
-    {
-      "id": "corridor-bombset-ventb",
-      "bounds": { "x1": 535, "y1": 455, "x2": 595, "y2": 460 }
-    }
+    { "id": "c-top-main", "bounds": { "x1": 50, "y1": 150, "x2": 910, "y2": 180 } },
+    { "id": "c-mid-main", "bounds": { "x1": 210, "y1": 270, "x2": 750, "y2": 310 } },
+    { "id": "c-bot-main", "bounds": { "x1": 50, "y1": 460, "x2": 910, "y2": 490 } },
+    { "id": "c-vert-left", "bounds": { "x1": 110, "y1": 150, "x2": 150, "y2": 490 } },
+    { "id": "c-vert-midleft", "bounds": { "x1": 330, "y1": 150, "x2": 370, "y2": 490 } },
+    { "id": "c-vert-midright", "bounds": { "x1": 590, "y1": 150, "x2": 630, "y2": 490 } },
+    { "id": "c-vert-right", "bounds": { "x1": 810, "y1": 150, "x2": 850, "y2": 490 } }
   ],
   "ventPairs": [
     {
       "a": "vent-a",
       "b": "vent-b",
-      "exitA": { "x": 75, "y": 462 },
-      "exitB": { "x": 565, "y": 462 }
+      "exitA": { "x": 80, "y": 600 },
+      "exitB": { "x": 880, "y": 600 }
     }
-  ],
-  "lockedRooms": [],
-  "directorSabotage": [
-    { "id": "lockdown", "name": "Lockdown", "description": "Seals a room's door for 8s." },
-    { "id": "blackout", "name": "Blackout", "description": "Kills lighting lot-wide — fog of war." },
-    { "id": "vent-seal", "name": "Vent Seal", "description": "Temporarily disables the Staff Vent shortcut." },
-    { "id": "fire-alarm", "name": "Fire Alarm", "description": "Forces every avatar back to Craft Services." }
   ]
 }
