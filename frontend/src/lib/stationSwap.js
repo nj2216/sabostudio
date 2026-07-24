@@ -80,11 +80,11 @@ function generateSwapMapping(playerIds, stationIds) {
  * @param {string[]} stationIds — all active station IDs
  * @returns {{ stop: Function, triggerNow: Function }}
  */
-export function startSwapScheduler(broadcast, playerIds, stationIds) {
+export function startSwapScheduler(broadcast, playerIds, stationIds, minMs = SWAP_MIN_MS, maxMs = SWAP_MAX_MS, onSwap = null) {
   let timeoutId = null;
 
   function nextDelay() {
-    return SWAP_MIN_MS + Math.random() * (SWAP_MAX_MS - SWAP_MIN_MS);
+    return minMs + Math.random() * (maxMs - minMs);
   }
 
   function fireSwap() {
@@ -98,6 +98,9 @@ export function startSwapScheduler(broadcast, playerIds, stationIds) {
         nextSwapIn: delay,
       },
     });
+    if (onSwap) {
+      onSwap(mapping, delay);
+    }
     timeoutId = setTimeout(fireSwap, delay);
     return { mapping, delay };
   }
@@ -154,13 +157,6 @@ export function useStationSwap(conn, localPlayerId, hostMapping = null) {
   const nextSwapAtRef = useRef(null);
   const countdownRef = useRef(null);
 
-  /** Allow host to push an updated mapping from the scheduler. */
-  const setHostMapping = useCallback((m) => {
-    if (!m) return;
-    setViewingStationId(m.viewingStationId);
-    setControllingStationId(m.controllingStationId);
-  }, []);
-
   function startCountdown(nextSwapIn) {
     if (countdownRef.current) clearInterval(countdownRef.current);
     nextSwapAtRef.current = Date.now() + nextSwapIn;
@@ -173,6 +169,17 @@ export function useStationSwap(conn, localPlayerId, hostMapping = null) {
       }
     }, 250);
   }
+
+  /** Allow host to push an updated mapping from the scheduler. */
+  const setHostMapping = useCallback((m, nextSwapIn) => {
+    if (m) {
+      setViewingStationId(m.viewingStationId);
+      setControllingStationId(m.controllingStationId);
+    }
+    if (typeof nextSwapIn === 'number') {
+      startCountdown(nextSwapIn);
+    }
+  }, []);
 
   // Apply initial host mapping once
   useEffect(() => {

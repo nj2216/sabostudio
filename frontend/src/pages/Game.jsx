@@ -224,6 +224,8 @@ export default function Game({
   conn,
   broadcast,
   // connections — reserved for future host-migration use
+  onMessage,
+  swapSettings,
 }) {
   // ── Station overlay ──────────────────────────────────────────────────────
   const [activeStationId, setActiveStationId] = useState(null);
@@ -260,23 +262,32 @@ export default function Game({
     }, []),
   });
 
+  // ── Station swap (client hook) ───────────────────────────────────────────
+  const { viewingStationId, controllingStationId, countdown, setHostMapping } = useStationSwap(
+    isHost ? null : conn,
+    playerId,
+    null,
+  );
+
   // ── Station swap (host) ──────────────────────────────────────────────────
   const swapSchedulerRef = useRef(null);
 
   useEffect(() => {
     if (!isHost) return;
     const playerIds = players.map((p) => p.id);
-    const { stop, triggerNow } = startSwapScheduler(broadcast, playerIds, TASK_STATION_IDS);
+    const { stop, triggerNow } = startSwapScheduler(
+      broadcast,
+      playerIds,
+      TASK_STATION_IDS,
+      swapSettings?.minMs,
+      swapSettings?.maxMs,
+      (mapping, delay) => {
+        setHostMapping(mapping[playerId], delay);
+      }
+    );
     swapSchedulerRef.current = { stop, triggerNow };
     return () => stop();
-  }, [isHost, broadcast, players]);
-
-  // ── Station swap (client hook) ───────────────────────────────────────────
-  const { viewingStationId, controllingStationId, countdown } = useStationSwap(
-    isHost ? null : conn,
-    playerId,
-    null,
-  );
+  }, [isHost, broadcast, players, swapSettings, playerId, setHostMapping]);
 
   // ── Sabotage receiver (guests) ───────────────────────────────────────────
   const sabotageCallbacks = useMemo(() => ({
@@ -294,21 +305,15 @@ export default function Game({
 
   // ── Host: handle guest messages (player-move + any future types) ─────────
   useEffect(() => {
-    if (!isHost || !peer) return;
+    if (!isHost || !onMessage) return;
 
-    function handleGuestData(conn) {
-      conn.on('data', (raw) => {
-        let msg;
-        try { msg = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
-        if (msg.type === 'player-move') {
-          receiveGuestMove(conn.peer, msg.payload);
-        }
-      });
-    }
-
-    peer.on('connection', handleGuestData);
-    return () => peer.off('connection', handleGuestData);
-  }, [isHost, peer, receiveGuestMove]);
+    onMessage('player-move', (conn, payload) => {
+      const canonicalId = players.find(p => p.peerId === conn.peer)?.id;
+      if (canonicalId) {
+        receiveGuestMove(canonicalId, payload);
+      }
+    });
+  }, [isHost, onMessage, players, receiveGuestMove]);
 
   // ── Director map effects via crisis / lockdown ───────────────────────────
   function handleCrisis(type) {
@@ -370,6 +375,7 @@ export default function Game({
             lockedRooms={lockedRooms}
             blackout={blackout}
             ventSealed={ventSealed}
+            controllingStationId={controllingStationId}
           />
           <p className="text-center text-xs text-gray-600 mt-1">
             WASD / ↑↓←→ · E to enter station

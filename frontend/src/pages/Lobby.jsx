@@ -43,12 +43,16 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   const [gameStarting, setGameStarting] = useState(false);
   const [peerConnected, setPeerConnected] = useState(isHost); // Host is "always connected" as self
   const [copySuccess, setCopySuccess] = useState(false);
+  const [swapMin, setSwapMin] = useState(15);
+  const [swapMax, setSwapMax] = useState(20);
 
   // Refs so callbacks don't close over stale state.
   const playersRef = useRef(players);
   const broadcastRef = useRef(null);
   const connectionsRef = useRef(null);
+  const onMessageRef = useRef(null);
   const connRef = useRef(null); // guest's DataConnection to host
+  const isTransitioningRef = useRef(false);
 
   useEffect(() => {
     playersRef.current = players;
@@ -58,12 +62,17 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
   useEffect(() => {
     if (!isHost) return;
 
-    const { broadcast, connections } = setupHost(peer, ({ peerId, name }) => {
+    const { broadcast, connections, onMessage } = setupHost(peer);
+
+    onMessage('player-joined', (conn, payload) => {
+      const peerId = conn.peer;
+      const { name, playerId: guestPlayerId } = payload;
+
       // A guest announced itself via 'player-joined'. Add to list if not present.
       setPlayers((prev) => {
         const alreadyIn = prev.some((p) => p.peerId === peerId);
         if (alreadyIn) return prev;
-        const updated = [...prev, { id: peerId, peerId, name, isHost: false }];
+        const updated = [...prev, { id: guestPlayerId, peerId, name, isHost: false }];
 
         // Broadcast updated list to all guests.
         broadcast({
@@ -77,10 +86,13 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
 
     broadcastRef.current = broadcast;
     connectionsRef.current = connections;
+    onMessageRef.current = onMessage;
 
     return () => {
-      // Clean up connections on unmount.
-      connections.forEach((conn) => conn.close());
+      // Clean up connections on unmount, unless we are transitioning to the game
+      if (!isTransitioningRef.current) {
+        connections.forEach((conn) => conn.close());
+      }
     };
   }, [isHost, peer]);
 
@@ -97,6 +109,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
             setPlayers(msg.payload.players);
           }
           if (msg.type === 'game-start') {
+            isTransitioningRef.current = true;
             setGameStarting(true);
             // Transition to game screen with the live connection
             onGameStart?.({
@@ -108,6 +121,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
               conn,
               broadcast: null,
               connections: null,
+              onMessage: null,
             });
           }
         });
@@ -116,7 +130,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
         setPeerConnected(true);
 
         // Announce ourselves to the host.
-        sendMessage(conn, 'player-joined', { name: playerName });
+        sendMessage(conn, 'player-joined', { name: playerName, playerId });
       } catch (err) {
         console.error('[SaboGuest] Failed to connect to host:', err);
       }
@@ -125,7 +139,9 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     connect();
 
     return () => {
-      conn?.close();
+      if (!isTransitioningRef.current) {
+        conn?.close();
+      }
     };
   }, [isHost, peer, hostPeerId, playerName, playerId, onGameStart]);
 
@@ -157,6 +173,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
 
   // ── Start Game (host only) ─────────────────────────────────────────────────
   function handleStartGame() {
+    isTransitioningRef.current = true;
     setGameStarting(true);
     if (broadcastRef.current) {
       broadcastRef.current({ type: 'game-start', payload: {} });
@@ -171,6 +188,8 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
       conn: null,
       broadcast: broadcastRef.current,
       connections: connectionsRef.current,
+      onMessage: onMessageRef.current,
+      swapSettings: { minMs: swapMin * 1000, maxMs: swapMax * 1000 },
     });
   }
 
@@ -260,6 +279,33 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
           </p>
         )}
       </div>
+
+      {/* Host Settings */}
+      {isHost && (
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md mb-6">
+          <h2 className="text-lg font-bold text-white mb-4">Game Settings</h2>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="text-gray-400 text-sm block mb-1">Swap Min (s)</label>
+              <input
+                type="number"
+                value={swapMin}
+                onChange={(e) => setSwapMin(Number(e.target.value))}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-gray-400 text-sm block mb-1">Swap Max (s)</label>
+              <input
+                type="number"
+                value={swapMax}
+                onChange={(e) => setSwapMax(Number(e.target.value))}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Start Game button — host only */}
       {isHost && (

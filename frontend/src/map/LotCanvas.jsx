@@ -42,6 +42,7 @@ export default function LotCanvas({
   lockedRooms = [],
   blackout = false,
   ventSealed = false,
+  controllingStationId = null,
 }) {
   const playerIndex = (id) => players.findIndex((p) => p.id === id);
 
@@ -51,13 +52,38 @@ export default function LotCanvas({
   // Local player position (for blackout fog-of-war)
   const localPos = allPositions[localPlayerId] ?? { x: mapWidth / 2, y: mapHeight / 2 };
 
+  // ── Camera setup ─────────────────────────────────────────────────────────
+  const VIEWPORT_WIDTH = 480;
+  const VIEWPORT_HEIGHT = 360;
+  const SCALE = 1.6;
+
+  // Center camera on local player
+  let tx = localPos.x - (VIEWPORT_WIDTH / 2) / SCALE;
+  let ty = localPos.y - (VIEWPORT_HEIGHT / 2) / SCALE;
+
+  // Clamp to map bounds
+  const maxTx = mapWidth - VIEWPORT_WIDTH / SCALE;
+  const maxTy = mapHeight - VIEWPORT_HEIGHT / SCALE;
+
+  tx = Math.max(0, Math.min(tx, maxTx));
+  ty = Math.max(0, Math.min(ty, maxTy));
+
   return (
     <div
       className="relative overflow-hidden rounded-xl border border-gray-700 select-none"
-      style={{ width: mapWidth, height: mapHeight, background: '#0d0d0d', flexShrink: 0 }}
+      style={{ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, background: '#0d0d0d', flexShrink: 0 }}
     >
-      {/* ── Corridors ───────────────────────────────────────────────────────── */}
-      {corridors.map((c) => (
+      <div
+        className="absolute top-0 left-0"
+        style={{
+          width: mapWidth,
+          height: mapHeight,
+          transformOrigin: '0 0',
+          transform: `scale(${SCALE}) translate(${-tx}px, ${-ty}px)`,
+        }}
+      >
+        {/* ── Corridors ───────────────────────────────────────────────────────── */}
+        {corridors.map((c) => (
         <div
           key={c.id}
           className="absolute"
@@ -163,6 +189,43 @@ export default function LotCanvas({
             >
               {name}
             </span>
+
+            {/* Target Room Arrow (Local Player Only) */}
+            {isLocal && controllingStationId && (() => {
+              const targetRoom = rooms.find((r) => r.stationId === controllingStationId);
+              if (!targetRoom) return null;
+
+              const targetX = targetRoom.bounds.x1 + (targetRoom.bounds.x2 - targetRoom.bounds.x1) / 2;
+              const targetY = targetRoom.bounds.y1 + (targetRoom.bounds.y2 - targetRoom.bounds.y1) / 2;
+
+              const dx = targetX - pos.x;
+              const dy = targetY - pos.y;
+
+              const angle = Math.atan2(dy, dx);
+
+              // Draw the arrow a bit outside the avatar
+              const dist = AVATAR_RADIUS + 12;
+              const arrowX = Math.cos(angle) * dist + AVATAR_RADIUS;
+              const arrowY = Math.sin(angle) * dist + AVATAR_RADIUS;
+
+              return (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: arrowX,
+                    top: arrowY,
+                    width: 0,
+                    height: 0,
+                    borderTop: '4px solid transparent',
+                    borderBottom: '4px solid transparent',
+                    borderLeft: '6px solid #facc15',
+                    transform: `translate(-50%, -50%) rotate(${angle}rad)`,
+                    transformOrigin: 'center center',
+                    filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.8))'
+                  }}
+                />
+              );
+            })()}
           </div>
         );
       })}
@@ -178,6 +241,8 @@ export default function LotCanvas({
         />
       )}
 
+      </div>
+
       {/* ── Vent sealed indicator ──────────────────────────────────────────── */}
       {ventSealed && (
         <div
@@ -191,7 +256,7 @@ export default function LotCanvas({
       {/* ── Map legend ─────────────────────────────────────────────────────── */}
       <div
         className="absolute top-1 right-1 text-xs text-gray-600 pointer-events-none"
-        style={{ fontSize: 7 }}
+        style={{ fontSize: 7, zIndex: 50 }}
       >
         WASD / ↑↓←→ to move · E to interact
       </div>

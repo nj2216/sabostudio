@@ -51,12 +51,12 @@ export function createPeer(peerId) {
  * Maintains a map of connected data connections and broadcasts updates.
  *
  * @param {Peer}     peer           The host's Peer instance.
- * @param {Function} onPlayerJoined Called with `{ name, peerId }` when a guest announces themselves.
- * @returns {{ broadcast: Function, connections: Map }}
+ * @returns {{ broadcast: Function, connections: Map, onMessage: Function }}
  */
-export function setupHost(peer, onPlayerJoined) {
+export function setupHost(peer) {
   /** @type {Map<string, import('peerjs').DataConnection>} */
   const connections = new Map();
+  const messageHandlers = new Map();
 
   peer.on('connection', (conn) => {
     conn.on('open', () => {
@@ -72,8 +72,9 @@ export function setupHost(peer, onPlayerJoined) {
         return;
       }
 
-      if (msg.type === 'player-joined') {
-        onPlayerJoined({ peerId: conn.peer, ...msg.payload });
+      const handler = messageHandlers.get(msg.type);
+      if (handler) {
+        handler(conn, msg.payload);
       }
     });
 
@@ -100,7 +101,11 @@ export function setupHost(peer, onPlayerJoined) {
     });
   }
 
-  return { broadcast, connections };
+  function onMessage(type, handler) {
+    messageHandlers.set(type, handler);
+  }
+
+  return { broadcast, connections, onMessage };
 }
 
 /**
