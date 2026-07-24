@@ -49,7 +49,38 @@ export const lagSpike = {
     el.style.position = 'relative';
     el.appendChild(overlay);
 
+    const timeouts = [];
+    function interceptInput(e) {
+      if (e.isTrusted) {
+        e.stopPropagation();
+        e.preventDefault();
+
+        const delay = 400 + Math.random() * 600; // 400-1000ms delay
+
+        const clone = new e.constructor(e.type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          view: window,
+        });
+
+        const target = document.elementFromPoint(e.clientX, e.clientY);
+        if (target && el.contains(target)) {
+          const tid = setTimeout(() => {
+            target.dispatchEvent(clone);
+          }, delay);
+          timeouts.push(tid);
+        }
+      }
+    }
+
+    const interceptEvents = ['click', 'pointerdown', 'pointerup', 'mousedown', 'mouseup'];
+    interceptEvents.forEach(type => el.addEventListener(type, interceptInput, { capture: true }));
+
     return () => {
+      timeouts.forEach(clearTimeout);
+      interceptEvents.forEach(type => el.removeEventListener(type, interceptInput, { capture: true }));
       el.style.transition = prevTransition;
       overlay.remove();
     };
