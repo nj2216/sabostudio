@@ -94,74 +94,131 @@ export default function Landing({ onHostReady, onGuestReady }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col items-center justify-center p-6">
-      {/* Header */}
-      <h1 className="text-5xl font-extrabold mb-2 text-purple-400 tracking-tight">
-        🎮 Sabotage Studio
-      </h1>
-      <p className="text-gray-400 mb-10 text-lg">
-        The chaotic browser party game. 2–8 players. Pure mayhem.
-      </p>
-
-      {error && (
-        <p className="mb-4 px-4 py-2 bg-red-900/50 border border-red-600 rounded text-red-300">
-          {error}
-        </p>
-      )}
-
-      <div className="flex flex-col md:flex-row gap-6 w-full max-w-2xl">
-        {/* Create Room Card */}
-        <div className="flex-1 bg-gray-900 rounded-2xl p-6 border border-gray-700 flex flex-col gap-4">
-          <h2 className="text-xl font-bold text-white">Create Room</h2>
-          <p className="text-gray-400 text-sm">
-            Start a new lobby. Share the code with friends.
-          </p>
-          <input
-            type="text"
-            placeholder="Your display name"
-            value={hostName}
-            onChange={(e) => setHostName(e.target.value)}
-            maxLength={20}
-            className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          />
-          <button
-            onClick={handleCreate}
-            disabled={loading}
-            className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 rounded-xl font-bold text-white transition-colors"
-          >
-            {loading ? 'Creating…' : '🚀 Create Room'}
-          </button>
+    <div className="h-screen max-h-screen overflow-hidden flex flex-col items-center justify-between p-4 relative z-10">
+      {/* Top HUD Nav Header */}
+      <div className="w-full max-w-4xl">
+        <div className="top-hud">
+          <div className="flex items-center gap-4">
+            <h1 className="brand-logo text-xl">
+              SABOTAGE <span>STUDIO</span>
+            </h1>
+            <span className="level-badge">v1.0.0 — P2P ONLINE</span>
+          </div>
+          <div className="flex items-center gap-6 hidden sm:flex">
+            <div className="flex flex-col items-center">
+              <span className="font-mono text-[9px] text-slate-400 uppercase tracking-widest">NETWORK</span>
+              <span className="font-head text-xs text-neon-cyan tracking-wider">P2P DATACHANNEL</span>
+            </div>
+            <div className="timecode-box">SYS.ONLINE</div>
+          </div>
         </div>
+      </div>
 
-        {/* Join Room Card */}
-        <div className="flex-1 bg-gray-900 rounded-2xl p-6 border border-gray-700 flex flex-col gap-4">
-          <h2 className="text-xl font-bold text-white">Join Room</h2>
-          <p className="text-gray-400 text-sm">
-            Have a code? Jump straight into the chaos.
-          </p>
-          <input
-            type="text"
-            placeholder="Room code (e.g. ABC123)"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            maxLength={6}
-            className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 uppercase tracking-widest"
-          />
-          <input
-            type="text"
-            placeholder="Your display name"
-            value={joinName}
-            onChange={(e) => setJoinName(e.target.value)}
-            maxLength={20}
-            className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-          />
-          <button
-            onClick={handleJoin}
-            disabled={loading}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-bold text-white transition-colors"
-          >
-            {loading ? 'Joining…' : '🎲 Join Room'}
-          </button>
+      {/* Main Content Area */}
+      <div className="w-full max-w-4xl flex-1 flex flex-col items-center justify-center gap-4 min-h-0">
+        <p className="font-mono text-xs text-slate-400 tracking-wider text-center uppercase">
+          [ TACTICAL GAME DIRECTOR INTERFACE & PARTY CONSOLE ]
+        </p>
+
+        {error && (
+          <div className="w-full max-w-2xl bg-red-950/80 border border-neon-red px-4 py-3 text-neon-red font-mono text-xs flex items-center gap-3 shadow-[0_0_15px_rgba(255,0,85,0.3)]">
+            <span className="w-2 h-2 bg-neon-red animate-ping rounded-full" />
+            <span>ALERT: {error}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl">
+          {/* Create Room Card */}
+          <div className="hud-container hud-cut-corner p-0">
+            <div className="container-header">
+              <div className="container-title">
+                <span className="status-indicator" />
+                CREATE SQUAD LOBBY
+              </div>
+              <span className="container-subtitle">HOST MODE</span>
+            </div>
+
+            <div className="p-6 flex flex-col gap-5">
+              <p className="font-sub text-slate-300 text-sm leading-relaxed">
+                Initialize authoritative host peer session. Share room code with up to 8 players.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <label className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">
+                  DIRECTOR CALLSIGN
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter display name..."
+                  value={hostName}
+                  onChange={(e) => setHostName(e.target.value)}
+                  maxLength={20}
+                  className="cyber-input"
+                />
+              </div>
+
+              <button
+                onClick={handleCreate}
+                disabled={loading}
+                className="fire-button mt-2"
+              >
+                {loading ? 'INITIALIZING PEER...' : '🚀 LAUNCH NEW ROOM'}
+              </button>
+            </div>
+          </div>
+
+          {/* Join Room Card */}
+          <div className="hud-container hud-cut-corner p-0">
+            <div className="container-header">
+              <div className="container-title">
+                <span className="status-indicator bg-neon-amber shadow-[0_0_8px_var(--neon-amber)]" />
+                JOIN GAME SESSION
+              </div>
+              <span className="container-subtitle">GUEST MODE</span>
+            </div>
+
+            <div className="p-6 flex flex-col gap-5">
+              <p className="font-sub text-slate-300 text-sm leading-relaxed">
+                Connect directly to an existing host room via 6-digit access code.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <label className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">
+                  ACCESS CODE
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. ABC123"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  maxLength={6}
+                  className="cyber-input tracking-widest uppercase font-bold text-neon-cyan"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">
+                  OPERATOR CALLSIGN
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter display name..."
+                  value={joinName}
+                  onChange={(e) => setJoinName(e.target.value)}
+                  maxLength={20}
+                  className="cyber-input"
+                />
+              </div>
+
+              <button
+                onClick={handleJoin}
+                disabled={loading}
+                className="btn-cyan mt-2"
+              >
+                {loading ? 'CONNECTING PEER...' : '🎲 JOIN ROOM SESSION'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

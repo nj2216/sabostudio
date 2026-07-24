@@ -1,94 +1,144 @@
-/**
- * frontend/src/sabotage/SabotageDeck.js
- *
- * Host-side sabotage broadcaster.
- *
- * The Director (host) holds a limited number of Director Tokens per round.
- * Spending a token broadcasts a 'sabotage-apply' message to all peers
- * targeting a specific player's station. Clients apply the effect locally.
- *
- * Message types:
- *   'sabotage-apply'   — host -> all peers
- *     payload: { effectId, targetPlayerId, stationId, durationMs }
- *   'sabotage-clear'   — host -> all peers  (optional early clear)
- *     payload: { effectId, targetPlayerId }
- *   'studio-crisis'    — host -> all peers
- *     payload: { type: 'power-outage' | 'fire-alarm' | 'take-too-many' }
- *
- * React hook for clients:
- *   useSabotageReceiver(conn, localPlayerId, stationElRef)
- *     Listens for sabotage-apply and applies effects to the station element.
- */
-
 import { useEffect, useRef } from 'react';
 import { getEffect } from './SabotageEffect.js';
 
-// ---------------------------------------------------------------------------
-// Director Tokens
-// ---------------------------------------------------------------------------
+/**
+ * Applies a sabotage effect on a target DOM element (station overlay or game stage).
+ */
+export function applySabotageEffectLocally(payload, getTargetEl, activeEffectsMap, callbacks = {}) {
+  const { effectId, targetPlayerId, durationMs } = payload ?? {};
+  const effect = getEffect(effectId);
+  if (!effect) return;
 
-export const DIRECTOR_TOKENS_PER_ROUND = 3;
+  const targetEl = getTargetEl?.() || document.body;
+  if (!targetEl) return;
+
+  // Run cleanup if the same effect is already active
+  const existing = activeEffectsMap.get(effect.id);
+  if (existing) {
+    try { existing(); } catch {}
+  }
+
+  const ctx = {
+    stationId: payload.stationId,
+    targetPlayerId,
+    onFreeze: callbacks.onFreeze,
+  };
+
+  try {
+    const cleanup = effect.apply(targetEl, ctx);
+    if (typeof cleanup === 'function') {
+      activeEffectsMap.set(effect.id, cleanup);
+
+      if (durationMs > 0) {
+        setTimeout(() => {
+          const fn = activeEffectsMap.get(effect.id);
+          if (fn) {
+            try { fn(); } catch {}
+            activeEffectsMap.delete(effect.id);
+          }
+        }, durationMs);
+      }
+    }
+  } catch (err) {
+    console.error('[SabotageDeck] Error applying effect:', effect.id, err);
+  }
+}
 
 // ---------------------------------------------------------------------------
-// Host-side broadcaster
+// Host Sabotage Handler
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a SabotageDeck instance for the host.
+ * Creates a SabotageBroadcaster instance for the host.
  *
- * @param {Function} broadcast — host broadcast fn from setupHost()
- * @param {number}   [tokensPerRound]
+ * @param {Function} broadcast — host broadcast fn
+ * @param {Function} getScores — fn returning current scores map { [playerId]: number }
+ * @param {Function} setScores — fn updating scores map
+ * @param {Array} players      — list of current players
+ * @param {Function} [onLocalSabotageApply] — callback when host is target of sabotage
+ * @param {Function} [onLocalControlSwap]    — callback when control swap triggers
  * @returns {{
- *   tokensLeft: number,
- *   fire:      (effectId: string, targetPlayerId: string, stationId: string) => boolean,
- *   crisis:    (type: 'power-outage' | 'fire-alarm' | 'take-too-many') => void,
- *   reset:     () => void,
+ *   fireSabotage: (buyerId: string, effectId: string, targetPlayerId: string, stationId?: string) => boolean,
+ *   crisis: (type: string) => void,
  * }}
  */
-export function createSabotageDeck(broadcast, tokensPerRound = DIRECTOR_TOKENS_PER_ROUND) {
-  let tokensLeft = tokensPerRound;
-
+export function createSabotageBroadcaster(
+  broadcast,
+  getScores,
+  setScores,
+  players = [],
+  onLocalSabotageApply = null,
+  onLocalControlSwap = null
+) {
   /**
-   * Fire a sabotage effect at a target player.
-   * Returns false if out of tokens.
+   * Execute a sabotage purchase.
+   * Returns true if successful (buyer had enough points).
    */
-  function fire(effectId, targetPlayerId, stationId) {
+  function fireSabotage(buyerId, effectId, targetPlayerId, stationId = 'any') {
     const effect = getEffect(effectId);
-    if (!effect) {
-      console.warn('[SabotageDeck] Unknown effect:', effectId);
-      return false;
-    }
-    if (tokensLeft <= 0) return false;
+    if (!effect) return false;
 
-    tokensLeft--;
-    broadcast({
-      type: 'sabotage-apply',
-      payload: {
-        effectId,
-        targetPlayerId,
-        stationId,
-        durationMs: effect.durationMs,
-      },
-    });
+    const scores = getScores();
+    const currentScore = scores[buyerId] ?? 0;
+    const cost = effect.cost ?? 50;
+
+    if (currentScore < cost) {
+      return false; // Not enough points
+    }
+
+    // Deduct points
+    const updatedScores = { ...scores, [buyerId]: currentScore - cost };
+    setScores(updatedScores);
+    broadcast({ type: 'score-update', payload: { scores: updatedScores } });
+
+    const buyerName = players.find((p) => p.id === buyerId)?.name ?? 'Someone';
+
+    // Handle Control Swap special sabotage
+    if (effectId === 'controlSwap' || effectId === 'earlySwap') {
+      let targetId = targetPlayerId;
+      if (!targetId || targetId === buyerId) {
+        const opponents = players.filter((p) => p.id !== buyerId);
+        targetId = opponents[Math.floor(Math.random() * opponents.length)]?.id;
+      }
+      if (!targetId) return false;
+
+      const playerA = players.find((p) => p.id === buyerId);
+      const playerB = players.find((p) => p.id === targetId);
+
+      const swapPayload = {
+        playerAId: buyerId,
+        playerBId: targetId,
+        playerAName: playerA?.name ?? 'Player A',
+        playerBName: playerB?.name ?? 'Player B',
+        durationMs: effect.durationMs || 15000,
+      };
+
+      broadcast({ type: 'control-swap', payload: swapPayload });
+      if (onLocalControlSwap) onLocalControlSwap(swapPayload);
+      return true;
+    }
+
+    // Standard sabotage effect
+    const payload = {
+      effectId: effect.id,
+      buyerId,
+      buyerName,
+      targetPlayerId,
+      stationId,
+      durationMs: effect.durationMs,
+    };
+
+    broadcast({ type: 'sabotage-apply', payload });
+    if (onLocalSabotageApply) onLocalSabotageApply(payload);
+
     return true;
   }
 
-  /** Broadcast a Studio Crisis co-op event to all players. */
   function crisis(type) {
     broadcast({ type: 'studio-crisis', payload: { type } });
   }
 
-  /** Refill tokens (call at round start). */
-  function reset() {
-    tokensLeft = tokensPerRound;
-  }
-
-  return {
-    get tokensLeft() { return tokensLeft; },
-    fire,
-    crisis,
-    reset,
-  };
+  return { fireSabotage, crisis };
 }
 
 // ---------------------------------------------------------------------------
@@ -96,20 +146,19 @@ export function createSabotageDeck(broadcast, tokensPerRound = DIRECTOR_TOKENS_P
 // ---------------------------------------------------------------------------
 
 /**
- * React hook that listens for 'sabotage-apply' messages and applies effects
- * to the local player's station DOM element.
+ * React hook that listens for sabotage messages on client connection.
  *
- * @param {import('peerjs').DataConnection | null} conn  — null for host
- * @param {string}   localPlayerId
- * @param {React.RefObject<HTMLElement>} stationElRef    — ref to the station container
+ * @param {import('peerjs').DataConnection | null} conn
+ * @param {string} localPlayerId
+ * @param {Function} getTargetEl
  * @param {{
- *   onEarlySwap?: Function,
+ *   onControlSwap?: (data: any) => void,
  *   onFreeze?: (frozen: boolean) => void,
  *   onCrisis?: (type: string) => void,
+ *   onSabotageApplied?: (payload: any) => void,
  * }} [callbacks]
  */
-export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks = {}) {
-  // Track active cleanups by effectId so we can clear them early if needed
+export function useSabotageReceiver(conn, localPlayerId, getTargetEl, callbacks = {}) {
   const activeEffects = useRef(new Map());
 
   useEffect(() => {
@@ -124,49 +173,16 @@ export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks
       }
 
       if (msg.type === 'sabotage-apply') {
-        const { effectId, targetPlayerId, durationMs } = msg.payload ?? {};
-        if (targetPlayerId !== localPlayerId) return;
+        const { targetPlayerId } = msg.payload ?? {};
+        callbacks.onSabotageApplied?.(msg.payload);
 
-        const el = stationElRef.current;
-        if (!el) return;
-
-        const effect = getEffect(effectId);
-        if (!effect) return;
-
-        // Run cleanup if the same effect is already active
-        const existing = activeEffects.current.get(effectId);
-        if (existing) existing();
-
-        const ctx = {
-          stationId: msg.payload.stationId,
-          targetPlayerId,
-          onEarlySwap: callbacks.onEarlySwap,
-          onFreeze: callbacks.onFreeze,
-        };
-
-        const cleanup = effect.apply(el, ctx);
-        activeEffects.current.set(effectId, cleanup);
-
-        // Auto-clear after duration
-        if (durationMs > 0) {
-          setTimeout(() => {
-            const fn = activeEffects.current.get(effectId);
-            if (fn) {
-              fn();
-              activeEffects.current.delete(effectId);
-            }
-          }, durationMs);
+        if (targetPlayerId === localPlayerId) {
+          applySabotageEffectLocally(msg.payload, getTargetEl, activeEffects.current, callbacks);
         }
       }
 
-      if (msg.type === 'sabotage-clear') {
-        const { effectId, targetPlayerId } = msg.payload ?? {};
-        if (targetPlayerId !== localPlayerId) return;
-        const fn = activeEffects.current.get(effectId);
-        if (fn) {
-          fn();
-          activeEffects.current.delete(effectId);
-        }
+      if (msg.type === 'control-swap') {
+        callbacks.onControlSwap?.(msg.payload);
       }
 
       if (msg.type === 'studio-crisis') {
@@ -178,9 +194,10 @@ export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks
     const effects = activeEffects.current;
     return () => {
       conn.off('data', handleData);
-      // Clean up all active effects on unmount
-      effects.forEach((fn) => fn());
+      effects.forEach((fn) => { try { fn(); } catch {} });
       effects.clear();
     };
-  }, [conn, localPlayerId, stationElRef, callbacks]);
+  }, [conn, localPlayerId, getTargetEl, callbacks]);
 }
+
+

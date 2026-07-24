@@ -241,9 +241,13 @@ function ObstacleDodge({ isControlling, onSolve }) {
         </div>
 
         {crashed && (
-          <div className="absolute inset-0 bg-red-900/70 flex items-center justify-center text-white font-bold text-sm">
-            💥 CRASHED
-          </div>
+          <button
+            onClick={() => { setCrashed(false); setDodged(0); setObstacles([]); }}
+            className="absolute inset-0 bg-red-950/90 border border-red-500/50 flex flex-col items-center justify-center text-white font-bold text-sm cursor-pointer hover:bg-red-900/90 transition-colors z-20"
+          >
+            <span>💥 CRASHED!</span>
+            <span className="text-xs text-yellow-300 mt-1 font-mono">CLICK TO RETRY</span>
+          </button>
         )}
         {solved && (
           <div className="absolute inset-0 bg-green-900/70 flex items-center justify-center text-white font-bold text-sm">

@@ -1,62 +1,46 @@
 /**
  * frontend/src/sabotage/SabotageEffect.js
  *
- * Shared interface + registry for all Sabotage Deck effects.
- *
- * Every effect follows the same shape:
- *   apply(stationEl, ctx) → cleanup
- *
- * The host fires effects via SabotageDeck.js; clients receive a
- * 'sabotage-apply' message and call effect.apply() on the correct DOM element.
- * When the duration expires (or the effect is manually cleared), the cleanup
- * function returned by apply() is called.
- *
- * @typedef {Object} StationContext
- * @property {string}   stationId       — which station the effect targets
- * @property {string}   targetPlayerId  — which player's view is affected
- * @property {Function} [onEarlySwap]   — called by earlySwap effect to fire a swap now
- * @property {Function} [onFreeze]      — called by stationFreeze to lock inputs
- *
- * @typedef {Object} SabotageEffect
- * @property {string}   id
- * @property {string}   name
- * @property {string}   description
- * @property {'visual'|'input'|'social'|'structural'} category
- * @property {number}   durationMs
- * @property {(stationEl: HTMLElement, ctx: StationContext) => () => void} apply
+ * Shared interface + registry for all 10 Sabotage Deck effects.
  */
 
-import { greaseScreen } from './effects/greaseScreen.js';
+import { adAvalanche } from './effects/adAvalanche.js';
+import { flashbang } from './effects/flashbang.js';
+import { screenGlitch } from './effects/screenGlitch.js';
 import { invertControls } from './effects/invertControls.js';
-import { blindfold } from './effects/blindfold.js';
-import { fakePopup } from './effects/fakePopup.js';
-import { screenCrack } from './effects/screenCrack.js';
-import { nightVision } from './effects/nightVision.js';
-import { wrongColors } from './effects/wrongColors.js';
-import { stickyDrag } from './effects/stickyDrag.js';
-import { mirrorMode } from './effects/mirrorMode.js';
-import { ghostInput } from './effects/ghostInput.js';
-import { stationFreeze } from './effects/stationFreeze.js';
-import { earlySwap } from './effects/earlySwap.js';
+import { butterFingers } from './effects/butterFingers.js';
+import { lagSpike } from './effects/lagSpike.js';
+import { soundboardAssault } from './effects/soundboardAssault.js';
+import { fakeScreenSwap } from './effects/fakeScreenSwap.js';
+import { taskRewind } from './effects/taskRewind.js';
+import { phantomCursor } from './effects/phantomCursor.js';
+import { controlSwap } from './effects/controlSwap.js';
 
 /** @type {SabotageEffect[]} */
 export const ALL_EFFECTS = [
-  greaseScreen,
+  adAvalanche,
+  flashbang,
+  screenGlitch,
   invertControls,
-  blindfold,
-  fakePopup,
-  screenCrack,
-  nightVision,
-  wrongColors,
-  stickyDrag,
-  mirrorMode,
-  ghostInput,
-  stationFreeze,
-  earlySwap,
+  butterFingers,
+  lagSpike,
+  soundboardAssault,
+  fakeScreenSwap,
+  taskRewind,
+  phantomCursor,
+  controlSwap,
 ];
 
 /** @type {Map<string, SabotageEffect>} */
-export const EFFECTS_BY_ID = new Map(ALL_EFFECTS.map((e) => [e.id, e]));
+export const EFFECTS_BY_ID = new Map();
+
+ALL_EFFECTS.forEach((e) => {
+  if (e && e.id) {
+    EFFECTS_BY_ID.set(e.id, e);
+    const camel = e.id.replace(/-([a-z])/g, (_, g) => g.toUpperCase());
+    EFFECTS_BY_ID.set(camel, e);
+  }
+});
 
 /** Convenience: look up an effect by ID. Returns null if not found. */
 export function getEffect(id) {
