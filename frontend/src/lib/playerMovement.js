@@ -114,7 +114,10 @@ export function usePlayerMovement({ playerId, isHost, conn, initialPos, walkable
       const dx = (right ? SPEED : 0) - (left ? SPEED : 0);
       const dy = (down ? SPEED : 0) - (up ? SPEED : 0);
 
-      // Try diagonal first; fall back to individual axes on collision
+      // Diagonal-first collision resolution: try the diagonal move first for
+      // smooth wall-sliding, then fall back to individual axes. The x-axis is
+      // checked before y, creating a slight horizontal bias in corners where
+      // both axes have different clearance — acceptable for a top-down game.
       let nx = x;
       let ny = y;
 
