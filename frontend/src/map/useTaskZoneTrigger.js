@@ -65,7 +65,7 @@ export function useTaskZoneTrigger({ localPos, rooms, onEnterRoom }) {
   // Listen for the interact key (E or Enter)
   useEffect(() => {
     function handleKey(e) {
-      if (e.key !== 'e' && e.key !== 'E' && e.key !== 'Enter') return;
+      if (e.key.toLowerCase() !== 'e' && e.key !== 'Enter') return;
       if (!nearbyRoom) return;
       onEnterRef.current?.(nearbyRoom.id, nearbyRoom.stationId);
     }

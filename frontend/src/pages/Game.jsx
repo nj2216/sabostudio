@@ -55,6 +55,12 @@ const WALKABLE_RECTS = [
   ...layout.corridors.map((c) => c.bounds),
 ];
 
+/** Palette cycling for player avatar colours — defined at module scope to avoid recreation on each render. */
+const PLAYER_COLOURS = [
+  'text-purple-400', 'text-blue-400', 'text-green-400', 'text-yellow-400',
+  'text-red-400', 'text-pink-400', 'text-teal-400', 'text-orange-400',
+];
+
 // ── Studio Crisis overlay ──────────────────────────────────────────────────
 
 const CRISIS_MESSAGES = {
@@ -402,17 +408,14 @@ export default function Game({
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 text-xs">
             <p className="text-gray-500 mb-2 font-semibold uppercase tracking-wider">Players</p>
             <ul className="space-y-1">
-              {players.map((p, i) => {
-                const COLOURS = ['text-purple-400','text-blue-400','text-green-400','text-yellow-400','text-red-400','text-pink-400','text-teal-400','text-orange-400'];
-                return (
-                  <li key={p.id} className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full bg-current ${COLOURS[i % COLOURS.length]}`} />
-                    <span className={p.id === playerId ? 'font-bold text-white' : 'text-gray-300'}>
-                      {p.name} {p.isHost ? '👑' : ''} {p.id === playerId ? '(you)' : ''}
-                    </span>
-                  </li>
-                );
-              })}
+              {players.map((p, i) => (
+                <li key={p.id} className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full bg-current ${PLAYER_COLOURS[i % PLAYER_COLOURS.length]}`} />
+                  <span className={p.id === playerId ? 'font-bold text-white' : 'text-gray-300'}>
+                    {p.name} {p.isHost ? '👑' : ''} {p.id === playerId ? '(you)' : ''}
+                  </span>
+                </li>
+              ))}
             </ul>
           </div>
         </div>

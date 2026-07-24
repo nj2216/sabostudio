@@ -28,7 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendMessage } from './peer.js';
 
 /** How often the movement tick fires (ms). Also the network-send interval. */
-const TICK_MS = 80; // ~12 Hz — smooth enough, low enough for P2P
+const TICK_MS = 80; // ~12.5 Hz — smooth enough, low enough for P2P
 
 /** Pixels the player moves per tick while a key is held. */
 const SPEED = 4;

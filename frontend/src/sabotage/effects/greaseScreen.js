@@ -3,6 +3,9 @@
  * Category: visual
  */
 
+/** Delay (ms) between each smudge blob in the trail. */
+const TRAIL_DELAY_MS = 80;
+
 /** @type {import('../SabotageEffect.js').SabotageEffect} */
 export const greaseScreen = {
   id: 'grease-screen',
@@ -60,7 +63,7 @@ export const greaseScreen = {
         for (let i = blobs.length - 1; i > 0; i--) {
           trailPositions[i] = { ...trailPositions[i - 1] };
         }
-      }, 80 * blobs.length);
+      }, TRAIL_DELAY_MS * blobs.length);
     }
 
     stationEl.style.position = 'relative';

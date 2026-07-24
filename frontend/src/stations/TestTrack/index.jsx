@@ -15,11 +15,13 @@ import { useEffect, useRef, useState } from 'react';
 // ── Module 1: Gear Shift QTE ───────────────────────────────────────────────
 
 const GEARS = ['1', '2', '3', '4', '5', 'R'];
+/** Number of forward gears (excludes 'R') — used for random sequence generation. */
+const FORWARD_GEARS_COUNT = GEARS.length - 1;
 
 function GearShiftQTE({ isControlling, onSolve }) {
   const [sequence] = useState(() =>
-    Array.from({ length: 5 }, () => GEARS[Math.floor(Math.random() * 5)])
-  ); // 5 forward gears only
+    Array.from({ length: 5 }, () => GEARS[Math.floor(Math.random() * FORWARD_GEARS_COUNT)])
+  ); // forward gears only
   const [step, setStep] = useState(0);
   const [solved, setSolved] = useState(false);
   const [wrong, setWrong] = useState(false);

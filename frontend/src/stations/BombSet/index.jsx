@@ -24,7 +24,7 @@ function WireCutter({ isControlling, onSolve }) {
   const [wires] = useState(() =>
     Array.from({ length: 5 }, (_, i) => ({ id: i, colour: randomWireColour(), cut: false }))
   );
-  const [wires2, setWires] = useState(wires);
+  const [wireState, setWireState] = useState(wires);
   // The correct wire is the first red one, or if no red, the last one
   const [target] = useState(() => {
     const red = wires.findIndex((w) => w.colour === 'red');
@@ -36,11 +36,11 @@ function WireCutter({ isControlling, onSolve }) {
   function cutWire(id) {
     if (!isControlling || solved || failed) return;
     if (id === target) {
-      setWires((prev) => prev.map((w) => (w.id === id ? { ...w, cut: true } : w)));
+      setWireState((prev) => prev.map((w) => (w.id === id ? { ...w, cut: true } : w)));
       setSolved(true);
       onSolve?.();
     } else {
-      setWires((prev) => prev.map((w) => (w.id === id ? { ...w, cut: true } : w)));
+      setWireState((prev) => prev.map((w) => (w.id === id ? { ...w, cut: true } : w)));
       setFailed(true);
     }
   }
@@ -56,7 +56,7 @@ function WireCutter({ isControlling, onSolve }) {
         {solved ? '✅ Defused!' : failed ? '💥 Wrong wire! Station failed.' : 'Cut the correct wire'}
       </p>
       <div className="space-y-1">
-        {wires2.map((w) => (
+        {wireState.map((w) => (
           <button
             key={w.id}
             onClick={() => cutWire(w.id)}
