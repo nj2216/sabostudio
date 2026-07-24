@@ -1,17 +1,21 @@
 /**
  * frontend/src/map/LotCanvas.jsx
  *
- * Redesigned 2D Top-Down Canvas renderer for "The Lot" map.
- * Among Us style bean/capsule character avatars, vector map styling with bold outlines,
- * doorway hazard stripes, floor tile gridlines, and interactive server/desk terminals.
+ * 2D Top-Down Canvas renderer for "The Lot" map.
+ * Enhanced with 100° Raycasted Viewcone System (Wall Occlusion), smooth viewcone turning,
+ * soft fog dissolve, peripheral motion blips, and 2D bean avatars.
  */
 
+import { useEffect, useState } from 'react';
 import layout from './lotLayout.json';
 
 const { mapWidth, mapHeight, rooms, corridors } = layout;
 
 /** Fog-of-war reveal radius during Blackout (px). */
 const BLACKOUT_RADIUS = 90;
+
+/** Viewcone maximum vision distance (px). */
+const VIEWCONE_RADIUS = 230;
 
 /** Palette for player suits — vibrant cyan, purple, emerald, gold, crimson, etc. */
 const SUIT_COLOURS = [
@@ -25,8 +29,92 @@ const SUIT_COLOURS = [
   '#f97316', // Orange
 ];
 
+const WALKABLE_RECTS = [
+  ...rooms.map((r) => r.bounds),
+  ...corridors.map((c) => c.bounds),
+];
+
+function isPointWalkable(px, py) {
+  return WALKABLE_RECTS.some(
+    (r) => px >= r.x1 && px <= r.x2 && py >= r.y1 && py <= r.y2
+  );
+}
+
 function getSuitColour(index) {
   return SUIT_COLOURS[index % SUIT_COLOURS.length];
+}
+
+/**
+ * Traces 50 rays in a 100° FOV arc from player position.
+ * Rays stop when hitting non-walkable wall boundaries.
+ */
+function computeRaycastPolygon(localPos, smoothAngle, fovDegrees = 105, maxRadius = VIEWCONE_RADIUS, numRays = 50) {
+  const halfArc = (fovDegrees * Math.PI) / 360;
+  const startAngle = smoothAngle - halfArc;
+  const step = (fovDegrees * Math.PI) / (180 * numRays);
+
+  const points = [{ x: localPos.x, y: localPos.y }];
+
+  for (let i = 0; i <= numRays; i++) {
+    const angle = startAngle + i * step;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    let finalDist = maxRadius;
+    for (let d = 8; d <= maxRadius; d += 4) {
+      const rx = localPos.x + cos * d;
+      const ry = localPos.y + sin * d;
+      if (!isPointWalkable(rx, ry)) {
+        finalDist = d - 2;
+        break;
+      }
+    }
+
+    points.push({
+      x: localPos.x + cos * finalDist,
+      y: localPos.y + sin * finalDist,
+    });
+  }
+
+  return points;
+}
+
+/**
+ * Checks if a target player is visible in the viewcone (accounting for angle + wall occlusion).
+ */
+function checkPlayerVisibility(localPos, smoothAngle, targetPos) {
+  const dx = targetPos.x - localPos.x;
+  const dy = targetPos.y - localPos.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist > VIEWCONE_RADIUS) return { inCone: false, inPeripheral: false };
+  if (dist < 30) return { inCone: true, inPeripheral: true }; // Immediate proximity reveal
+
+  // Angle check
+  const angleToTarget = Math.atan2(dy, dx);
+  let diff = angleToTarget - smoothAngle;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+
+  const inAngleArc = Math.abs(diff) <= (53 * Math.PI) / 180;
+  if (!inAngleArc) {
+    return { inCone: false, inPeripheral: dist <= 165 };
+  }
+
+  // Raycast wall occlusion check
+  const steps = Math.ceil(dist / 6);
+  const stepX = dx / steps;
+  const stepY = dy / steps;
+
+  for (let i = 1; i <= steps; i++) {
+    const rx = localPos.x + stepX * i;
+    const ry = localPos.y + stepY * i;
+    if (!isPointWalkable(rx, ry)) {
+      return { inCone: false, inPeripheral: dist <= 165 }; // Blocked by wall!
+    }
+  }
+
+  return { inCone: true, inPeripheral: true };
 }
 
 export default function LotCanvas({
@@ -38,11 +126,34 @@ export default function LotCanvas({
   blackout = false,
   ventSealed = false,
   controllingStationId = null,
+  facingAngle = Math.PI / 2,
+  interactProgress = 0,
+  isInteracting = false,
+  isDirectorSpectating = false,
 }) {
   const playerIndex = (id) => players.findIndex((p) => p.id === id);
   const nameOf = (id) => players.find((p) => p.id === id)?.name ?? id;
 
   const localPos = allPositions[localPlayerId] ?? { x: mapWidth / 2, y: mapHeight / 2 };
+
+  // ── Smooth Viewcone Turning Animation Loop ──────────────────────────────
+  const [smoothAngle, setSmoothAngle] = useState(facingAngle);
+
+  useEffect(() => {
+    let animId;
+    const updateAngle = () => {
+      setSmoothAngle((prev) => {
+        let diff = facingAngle - prev;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        if (Math.abs(diff) < 0.005) return facingAngle;
+        return prev + diff * 0.16; // Smooth turning interpolation
+      });
+      animId = requestAnimationFrame(updateAngle);
+    };
+    animId = requestAnimationFrame(updateAngle);
+    return () => cancelAnimationFrame(animId);
+  }, [facingAngle]);
 
   // ── Camera setup (16:9 aspect ratio) ─────────────────────────────────────
   const VIEWPORT_WIDTH = 640;
@@ -57,6 +168,12 @@ export default function LotCanvas({
 
   tx = Math.max(0, Math.min(tx, maxTx));
   ty = Math.max(0, Math.min(ty, maxTy));
+
+  // Compute Raycasted Wall-Occluded Viewcone Polygon SVG Path
+  const polygonPoints = computeRaycastPolygon(localPos, smoothAngle);
+  const viewConeSvgPath = polygonPoints.reduce((acc, pt, idx) => {
+    return `${acc} ${idx === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
+  }, '') + ' Z';
 
   return (
     <div className="relative overflow-hidden w-full h-full select-none bg-[#03060a]">
@@ -102,7 +219,7 @@ export default function LotCanvas({
           return (
             <div
               key={room.id}
-              className="absolute flex flex-col items-center justify-between p-1.5 transition-all duration-200"
+              className={`absolute flex flex-col items-center justify-between p-1.5 transition-all duration-200 ${isNearby ? 'animate-pulse' : ''}`}
               style={{
                 left: room.bounds.x1,
                 top: room.bounds.y1,
@@ -127,13 +244,13 @@ export default function LotCanvas({
                 outline: '1.5px solid #000000',
                 borderRadius: 6,
                 boxShadow: isNearby
-                  ? '0 0 20px rgba(255, 183, 3, 0.5), inset 0 0 16px rgba(255, 183, 3, 0.15)'
+                  ? '0 0 24px rgba(255, 183, 3, 0.6), inset 0 0 16px rgba(255, 183, 3, 0.2)'
                   : isLocked
                   ? '0 0 16px rgba(255, 0, 85, 0.4)'
                   : '0 4px 12px rgba(0,0,0,0.6), inset 0 0 12px rgba(0, 243, 255, 0.04)',
               }}
             >
-              {/* Doorway Hazard Stripes Bar at bottom */}
+              {/* Doorway Hazard Stripes Bar */}
               <div
                 className="absolute bottom-0 inset-x-2 h-1 pointer-events-none"
                 style={{
@@ -155,10 +272,9 @@ export default function LotCanvas({
                 </span>
               </div>
 
-              {/* ── Interactive Terminal Desk / Console Vector Graphics ────────── */}
+              {/* Interactive Terminal Desk / Console Vector Graphics */}
               {room.stationId && (
                 <div className="relative flex flex-col items-center my-auto z-10">
-                  {/* Desk / Server Rack Body */}
                   <div
                     className="relative flex items-center justify-center rounded-sm transition-transform"
                     style={{
@@ -167,10 +283,9 @@ export default function LotCanvas({
                       background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
                       border: '2px solid #334155',
                       outline: '1px solid #000000',
-                      boxShadow: isNearby ? '0 0 12px rgba(0,243,255,0.6)' : '0 2px 6px rgba(0,0,0,0.8)',
+                      boxShadow: isNearby ? '0 0 14px rgba(0,243,255,0.7)' : '0 2px 6px rgba(0,0,0,0.8)',
                     }}
                   >
-                    {/* Monitor Screen */}
                     <div
                       className="flex items-center justify-center rounded-xs"
                       style={{
@@ -181,17 +296,41 @@ export default function LotCanvas({
                         border: '1px solid #ffffff',
                       }}
                     >
-                      {/* Animated Terminal Scanline / Eyes */}
                       <span className="font-mono text-[7px] text-black font-black tracking-tighter">
                         {isNearby ? '>_E' : '::'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Interactive Prompt Badge */}
+                  {/* Radial Hold-Progress Ring Indicator on Interact */}
                   {isNearby && (
-                    <div className="absolute -top-6 font-mono font-black text-[8px] bg-amber-400 text-black px-2 py-0.5 rounded shadow-[0_0_10px_rgba(255,183,3,0.8)] border border-black animate-bounce whitespace-nowrap z-20">
-                      [E] INTERACT
+                    <div className="absolute -top-9 flex flex-col items-center z-20">
+                      <div className="relative flex items-center justify-center">
+                        <svg className="w-8 h-8 -rotate-90">
+                          <circle
+                            cx="16"
+                            cy="16"
+                            r="13"
+                            className="stroke-slate-800"
+                            strokeWidth="3"
+                            fill="transparent"
+                          />
+                          <circle
+                            cx="16"
+                            cy="16"
+                            r="13"
+                            className="stroke-amber-400 transition-all duration-75"
+                            strokeWidth="3"
+                            strokeDasharray={2 * Math.PI * 13}
+                            strokeDashoffset={2 * Math.PI * 13 * (1 - interactProgress)}
+                            strokeLinecap="round"
+                            fill="transparent"
+                          />
+                        </svg>
+                        <span className="absolute font-mono font-black text-[7.5px] text-amber-300 drop-shadow">
+                          {isInteracting ? `${Math.round(interactProgress * 100)}%` : 'HOLD E'}
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -222,17 +361,76 @@ export default function LotCanvas({
           );
         })}
 
-        {/* ── 2D Stylized Bean/Capsule Avatars (Among Us style) ──────────────── */}
+        {/* ── Raycasted 100° FOV Viewcone & Soft Fog Layer (Wall Occlusion) ────── */}
+        {!blackout && (
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            style={{ zIndex: 15 }}
+          >
+            <defs>
+              <mask id="viewcone-mask">
+                <rect width={mapWidth} height={mapHeight} fill="#ffffff" />
+                <path d={viewConeSvgPath} fill="#000000" />
+                <circle cx={localPos.x} cy={localPos.y} r="35" fill="#000000" />
+              </mask>
+            </defs>
+
+            {/* Dark Fog mask outside local player's raycasted FOV polygon */}
+            <rect
+              width={mapWidth}
+              height={mapHeight}
+              fill="rgba(4, 7, 13, 0.92)"
+              mask="url(#viewcone-mask)"
+            />
+
+            {/* Glowing boundary path for raycasted FOV cone */}
+            <path
+              d={viewConeSvgPath}
+              fill="none"
+              stroke="rgba(0, 243, 255, 0.4)"
+              strokeWidth="2"
+              strokeDasharray="4 3"
+            />
+          </svg>
+        )}
+
+        {/* ── 2D Stylized Bean/Capsule Avatars (With Wall Occlusion Check) ────── */}
         {Object.entries(allPositions).map(([pid, pos]) => {
           const idx = playerIndex(pid);
           const suitColour = getSuitColour(idx);
           const isLocal = pid === localPlayerId;
           const name = nameOf(pid);
 
+          // Raycast Visibility Check
+          const vis = checkPlayerVisibility(localPos, smoothAngle, pos);
+
           if (blackout) {
             const dx = pos.x - localPos.x;
             const dy = pos.y - localPos.y;
             if (!isLocal && Math.sqrt(dx * dx + dy * dy) > BLACKOUT_RADIUS) return null;
+          }
+
+          // If opponent is occluded by walls or outside viewcone:
+          if (!isLocal && !vis.inCone) {
+            if (vis.inPeripheral) {
+              return (
+                <div
+                  key={`blip-${pid}`}
+                  className="absolute pointer-events-none flex items-center justify-center animate-ping"
+                  style={{
+                    left: pos.x - 6,
+                    top: pos.y - 6,
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    background: 'rgba(0, 243, 255, 0.8)',
+                    boxShadow: '0 0 10px #00f3ff',
+                    zIndex: 22,
+                  }}
+                />
+              );
+            }
+            return null; // Hidden completely by walls or range
           }
 
           return (
@@ -261,8 +459,6 @@ export default function LotCanvas({
 
               {/* 2D Cyber-Bean / Capsule Avatar Container */}
               <div className="relative w-full h-full flex flex-col items-center justify-between">
-                
-                {/* Backpack / Cyber Oxygen Tank attached on left side */}
                 <div
                   style={{
                     position: 'absolute',
@@ -277,7 +473,6 @@ export default function LotCanvas({
                   }}
                 />
 
-                {/* Bean/Capsule Main Body */}
                 <div
                   style={{
                     width: 20,
@@ -291,7 +486,6 @@ export default function LotCanvas({
                     overflow: 'hidden',
                   }}
                 >
-                  {/* Glowing LED Visor / Glass Faceplate */}
                   <div
                     style={{
                       position: 'absolute',
@@ -308,14 +502,12 @@ export default function LotCanvas({
                       justifyContent: 'center',
                     }}
                   >
-                    {/* Animated LED Visor Eyes */}
                     <span className="font-mono text-[7px] text-white font-black tracking-tighter drop-shadow">
                       {isLocal ? '^ _ ^' : '● _ ●'}
                     </span>
                   </div>
                 </div>
 
-                {/* Stubby Avatar Feet */}
                 <div className="flex justify-between w-3.5 -mt-1 z-10">
                   <div
                     style={{
@@ -360,7 +552,7 @@ export default function LotCanvas({
                 {isLocal ? `★ ${name}` : name}
               </div>
 
-              {/* Target Guidance Arrow (Local Player Only) */}
+              {/* Target Guidance Arrow */}
               {isLocal && controllingStationId && (() => {
                 const targetRoom = rooms.find((r) => r.stationId === controllingStationId);
                 if (!targetRoom) return null;
@@ -409,6 +601,16 @@ export default function LotCanvas({
         )}
       </div>
 
+      {/* ── Director Eyes On You Indicator ─────────────────────────────────── */}
+      {isDirectorSpectating && (
+        <div
+          className="absolute top-2 left-2 z-50 bg-rose-950/90 border border-rose-500/80 text-rose-300 font-mono text-[10px] font-bold px-3 py-1 rounded flex items-center gap-2 shadow-[0_0_15px_rgba(255,0,85,0.5)] animate-pulse"
+        >
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+          <span>👁️ DIRECTOR SPECTATING YOU</span>
+        </div>
+      )}
+
       {/* ── Sealed Vents Warning Overlay ───────────────────────────────────── */}
       {ventSealed && (
         <div
@@ -424,7 +626,7 @@ export default function LotCanvas({
         className="absolute top-2 right-2 text-xs font-mono text-cyan-300 bg-slate-950/90 border border-cyan-500/40 px-2.5 py-1 rounded pointer-events-none shadow-lg"
         style={{ fontSize: 9, zIndex: 50 }}
       >
-        [WASD / ARROWS] Move · [E] Interact
+        [WASD / ARROWS] Move · [HOLD E] Interact
       </div>
     </div>
   );

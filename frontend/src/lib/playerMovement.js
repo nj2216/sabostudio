@@ -76,6 +76,8 @@ export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, ini
   useEffect(() => { activeTargetRef.current = activeTargetId; }, [activeTargetId]);
 
   const [allPositions, setAllPositions] = useState({ [playerId]: initialPos });
+  const [facingAngle, setFacingAngle] = useState(Math.PI / 2); // Default down (90 deg)
+  const facingAngleRef = useRef(Math.PI / 2);
 
   // Mutable refs — avoid stale closures in the interval
   const allPositionsRef = useRef({ [playerId]: initialPos });
@@ -118,6 +120,12 @@ export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, ini
 
       const dx = (right ? SPEED : 0) - (left ? SPEED : 0);
       const dy = (down ? SPEED : 0) - (up ? SPEED : 0);
+
+      if (dx !== 0 || dy !== 0) {
+        const angle = Math.atan2(dy, dx);
+        facingAngleRef.current = angle;
+        setFacingAngle(angle);
+      }
 
       let nx = x;
       let ny = y;
@@ -199,6 +207,6 @@ export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, ini
 
   const localPos = allPositions[playerId] || initialPos;
 
-  return { localPos, allPositions, setBroadcast, receiveGuestMove };
+  return { localPos, allPositions, facingAngle, setBroadcast, receiveGuestMove };
 }
 

@@ -1,8 +1,16 @@
 /**
  * frontend/src/pages/Game.jsx
  *
- * Redesigned Game screen with elevated sci-fi HUD styling, high-contrast leaderboard,
- * enhanced Sabotage Shop modal, station terminal popups, and live camera feed visuals.
+ * Game screen with UX & Feel Juice:
+ *   - 100° FOV Viewcone & Fog-of-War for all players
+ *   - Holding E Interact charge-up radial ring (0.5s)
+ *   - Floating "+N PTS" arcing text popups
+ *   - Counter badge scale punch (1.18x) on point gains
+ *   - Sabotage impact camera shake + chromatic aberration
+ *   - Pre-sabotage edge static flicker
+ *   - Sabotage Shop unlock progress meters
+ *   - Variable critical task completion rewards (+150 PTS)
+ *   - Animated live leaderboard rank re-ordering
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -23,8 +31,6 @@ import EspressoRush from '../stations/EspressoRush/index.jsx';
 import RocketLaunch from '../stations/RocketLaunch/index.jsx';
 import KeyDuplicator from '../stations/KeyDuplicator/index.jsx';
 import layout from '../map/lotLayout.json';
-
-// ── Station component map ──────────────────────────────────────────────────
 
 const STATION_COMPONENTS = {
   'bomb-set':      WireCutter,
@@ -48,8 +54,6 @@ const PLAYER_COLOURS = [
   'text-purple-400', 'text-cyan-400', 'text-emerald-400', 'text-amber-400',
   'text-rose-400', 'text-pink-400', 'text-teal-400', 'text-orange-400',
 ];
-
-// ── Studio Crisis overlay ──────────────────────────────────────────────────
 
 const CRISIS_MESSAGES = {
   'power-outage': {
@@ -99,8 +103,6 @@ function StudioCrisisOverlay({ type, onDismiss }) {
   );
 }
 
-// ── Control Swap Warning Banner ──────────────────────────────────────────────
-
 function ControlSwapBanner({ targetName, remainingSecs }) {
   return (
     <div className="hud-container flex items-center justify-between px-5 py-2 text-xs font-mono border-x-0 border-t-0 border-b-2 border-b-amber-400 bg-amber-950/95 text-amber-200 shadow-[0_0_25px_rgba(255,183,3,0.5)] animate-pulse">
@@ -118,7 +120,7 @@ function ControlSwapBanner({ targetName, remainingSecs }) {
   );
 }
 
-// ── Sabotage Shop Modal ─────────────────────────────────────────────────────
+// ── Sabotage Shop Modal with Progress Bars ──────────────────────────────────
 
 function SabotageShopModal({ points, players, localPlayerId, onFireSabotage, onClose }) {
   const [activeTab, setActiveTab] = useState('ALL');
@@ -179,12 +181,13 @@ function SabotageShopModal({ points, players, localPlayerId, onFireSabotage, onC
             ))}
           </div>
 
-          {/* Sabotage Effect Cards Grid */}
+          {/* Sabotage Effect Cards Grid with Progress Meters */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
             {filteredEffects.map((eff) => {
               const effCost = eff.cost ?? 50;
               const isSelected = selectedEffect === eff.id;
               const isAffordable = points >= effCost;
+              const progressPct = Math.min(100, Math.round((points / effCost) * 100));
 
               return (
                 <div
@@ -192,18 +195,30 @@ function SabotageShopModal({ points, players, localPlayerId, onFireSabotage, onC
                   onClick={() => setSelectedEffect(eff.id)}
                   className={`p-3 border rounded cursor-pointer transition-all flex flex-col justify-between text-xs ${isSelected ? 'bg-cyan-950/50 border-cyan-400 shadow-[0_0_14px_rgba(0,243,255,0.35)] text-white' : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:border-slate-700'}`}
                 >
-                  <div className="flex items-center justify-between font-bold mb-1">
-                    <span className="truncate text-sm">{eff.name}</span>
-                    <span className={`font-mono text-[10px] px-2 py-0.5 rounded font-bold ${isAffordable ? 'bg-amber-950/80 text-amber-400 border border-amber-400/50' : 'bg-slate-800 text-slate-500'}`}>
-                      {effCost} PTS
-                    </span>
+                  <div>
+                    <div className="flex items-center justify-between font-bold mb-1">
+                      <span className="truncate text-sm">{eff.name}</span>
+                      <span className={`font-mono text-[10px] px-2 py-0.5 rounded font-bold ${isAffordable ? 'bg-amber-950/80 text-amber-400 border border-amber-400/50' : 'bg-slate-800 text-slate-500'}`}>
+                        {effCost} PTS
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed mb-2">
+                      {eff.description || 'Apply sabotage disruption against opponent.'}
+                    </p>
                   </div>
-                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed mb-2">
-                    {eff.description || 'Apply sabotage disruption against opponent.'}
-                  </p>
-                  <div className="flex items-center justify-between text-[9px] font-mono text-slate-500">
-                    <span className="uppercase">{eff.category}</span>
-                    <span>{eff.durationMs ? `${eff.durationMs / 1000}S DURATION` : 'INSTANT'}</span>
+
+                  <div>
+                    {/* Unlock Progress Bar */}
+                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800 my-1">
+                      <div
+                        className={`h-full transition-all duration-300 ${isAffordable ? 'bg-amber-400 shadow-[0_0_8px_#ffb703]' : 'bg-cyan-500/60'}`}
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
+                      <span className="uppercase">{eff.category}</span>
+                      <span>{points}/{effCost} PTS ({progressPct}%)</span>
+                    </div>
                   </div>
                 </div>
               );
@@ -262,7 +277,6 @@ export default function Game({
   onMessage,
 }) {
   const [activeStationId, setActiveStationId] = useState(null);
-  const [stationResetKey, setStationResetKey] = useState(0);
   const stationElRef = useRef(null);
 
   const [scores, setScores] = useState(() => {
@@ -284,10 +298,44 @@ export default function Game({
   }, [players]);
 
   const [toast, setToast] = useState(null);
+  const [floatingPopups, setFloatingPopups] = useState([]);
+  const [counterPunch, setCounterPunch] = useState(false);
+  const [screenShake, setScreenShake] = useState(false);
+  const [preSabotageTell, setPreSabotageTell] = useState(false);
+  const [terminalFlash, setTerminalFlash] = useState(false);
+
+  // Holding E Charge-Up state
+  const [interactProgress, setInteractProgress] = useState(0);
+  const [isInteracting, setIsInteracting] = useState(false);
+  const interactTimerRef = useRef(null);
+  const eKeyDownRef = useRef(false);
 
   function showToast(msg, duration = 3000) {
     setToast(msg);
     setTimeout(() => setToast(null), duration);
+  }
+
+  function addFloatingPopup(text, x = window.innerWidth / 2, y = window.innerHeight / 2) {
+    const id = Date.now() + Math.random();
+    setFloatingPopups((prev) => [...prev, { id, text, x, y }]);
+    setTimeout(() => {
+      setFloatingPopups((prev) => prev.filter((p) => p.id !== id));
+    }, 700);
+  }
+
+  function triggerCounterPunch() {
+    setCounterPunch(true);
+    setTimeout(() => setCounterPunch(false), 300);
+  }
+
+  function triggerSabotageHit() {
+    setScreenShake(true);
+    setTimeout(() => setScreenShake(false), 250);
+  }
+
+  function triggerPreSabotageTell() {
+    setPreSabotageTell(true);
+    setTimeout(() => setPreSabotageTell(false), 450);
   }
 
   const [showSabotageShop, setShowSabotageShop] = useState(false);
@@ -299,6 +347,7 @@ export default function Game({
   const [controlSwapInfo, setControlSwapInfo] = useState(null);
   const controlSwapTimerRef = useRef(null);
 
+  // Close station terminal on ESC key
   useEffect(() => {
     function handleKeyDown(e) {
       if (e.key === 'Escape' && activeStationId) {
@@ -309,7 +358,7 @@ export default function Game({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeStationId]);
 
-  const { localPos, allPositions, setBroadcast, receiveGuestMove } = usePlayerMovement({
+  const { localPos, allPositions, facingAngle, setBroadcast, receiveGuestMove } = usePlayerMovement({
     playerId,
     controlTargetId,
     isHost,
@@ -326,11 +375,56 @@ export default function Game({
     localPos,
     rooms: layout.rooms,
     onEnterRoom: useCallback((roomId, stationId) => {
-      if (stationId && !activeStationId) {
-        setActiveStationId(stationId);
-      }
-    }, [activeStationId]),
+      // Optional auto enter
+    }, []),
   });
+
+  // ── Interact Charge-Up Hold Loop (0.5s) ──────────────────────────────────
+  useEffect(() => {
+    function onKeyDown(e) {
+      if ((e.key === 'e' || e.key === 'E') && nearbyRoom?.stationId && !activeStationId && !eKeyDownRef.current) {
+        eKeyDownRef.current = true;
+        setIsInteracting(true);
+
+        const startTime = Date.now();
+        const duration = 450; // 450ms hold
+
+        if (interactTimerRef.current) clearInterval(interactTimerRef.current);
+        interactTimerRef.current = setInterval(() => {
+          const elapsed = Date.now() - startTime;
+          const pct = Math.min(1.0, elapsed / duration);
+          setInteractProgress(pct);
+
+          if (pct >= 1.0) {
+            clearInterval(interactTimerRef.current);
+            eKeyDownRef.current = false;
+            setIsInteracting(false);
+            setInteractProgress(0);
+            setActiveStationId(nearbyRoom.stationId);
+            setTerminalFlash(true);
+            setTimeout(() => setTerminalFlash(false), 350);
+          }
+        }, 30);
+      }
+    }
+
+    function onKeyUp(e) {
+      if (e.key === 'e' || e.key === 'E') {
+        eKeyDownRef.current = false;
+        if (interactTimerRef.current) clearInterval(interactTimerRef.current);
+        setIsInteracting(false);
+        setInteractProgress(0);
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      if (interactTimerRef.current) clearInterval(interactTimerRef.current);
+    };
+  }, [nearbyRoom, activeStationId]);
 
   const stageRef = useRef(null);
   const hostActiveEffects = useRef(new Map());
@@ -355,6 +449,7 @@ export default function Game({
 
       if (targetId) {
         setControlTargetId(targetId);
+        triggerSabotageHit();
         showToast(`🔄 CONTROL SWAP! You are controlling ${targetName}!`, 4000);
 
         let remaining = Math.ceil(durationMs / 1000);
@@ -384,6 +479,7 @@ export default function Game({
       onControlSwap: handleControlSwapEvent,
       onCrisis: (type) => {
         setCrisis(type);
+        triggerSabotageHit();
         if (type === 'power-outage') {
           setBlackout(true);
           setTimeout(() => setBlackout(false), 8000);
@@ -391,12 +487,10 @@ export default function Game({
       },
       onSabotageApplied: (payload) => {
         if (payload?.targetPlayerId === playerId) {
+          triggerPreSabotageTell();
+          setTimeout(() => triggerSabotageHit(), 450);
           showToast(`⚠️ Sabotage applied to you by ${payload.buyerName || 'an opponent'}!`);
         }
-      },
-      onTaskRewind: () => {
-        setStationResetKey((prev) => prev + 1);
-        showToast('⏪ Task Rewound! Progress reset.');
       },
     }),
     [handleControlSwapEvent, playerId]
@@ -412,6 +506,8 @@ export default function Game({
         players,
         (payload) => {
           if (payload.targetPlayerId === playerId) {
+            triggerPreSabotageTell();
+            setTimeout(() => triggerSabotageHit(), 450);
             showToast(`⚠️ Sabotage applied to you by ${payload.buyerName || 'an opponent'}!`);
             applySabotageEffectLocally(payload, getTargetEl, hostActiveEffects.current, sabotageCallbacks);
           }
@@ -490,16 +586,29 @@ export default function Game({
   }, [isHost, conn, handleControlSwapEvent]);
 
   function handleTaskSolve(pts = 100) {
-    showToast(`🎯 TASK COMPLETED! +${pts} POINTS AWARDED!`);
+    const isCritical = Math.random() < 0.15;
+    const ptsAwarded = isCritical ? 150 : pts;
+
+    if (isCritical) {
+      showToast('⚡ CRITICAL TASK COMPLETION! +150 PTS BONUS!');
+      addFloatingPopup('⚡ +150 PTS CRITICAL!');
+    } else {
+      showToast(`🎯 TASK COMPLETED! +${ptsAwarded} POINTS AWARDED!`);
+      addFloatingPopup(`+${ptsAwarded} PTS`);
+    }
+
+    triggerCounterPunch();
+    setTerminalFlash(true);
+    setTimeout(() => setTerminalFlash(false), 350);
 
     setScores((prev) => {
       const current = prev[playerId] ?? 0;
-      const updated = { ...prev, [playerId]: current + pts };
+      const updated = { ...prev, [playerId]: current + ptsAwarded };
 
       if (isHost && broadcast) {
         broadcast({ type: 'score-update', payload: { scores: updated } });
       } else if (conn) {
-        sendMessage(conn, 'task-complete', { playerId, pts, stationId: activeStationId });
+        sendMessage(conn, 'task-complete', { playerId, pts: ptsAwarded, stationId: activeStationId });
       }
 
       return updated;
@@ -555,10 +664,26 @@ export default function Game({
         </div>
       )}
 
-      {/* Main 16:9 Viewport Container */}
-      <div className="w-full max-w-5xl aspect-video relative hud-container hud-cut-corner overflow-hidden flex flex-col shadow-[0_0_50px_rgba(0,243,255,0.2)] border-cyan-400/40" ref={stageRef}>
+      {/* Floating Points Popups Layer */}
+      {floatingPopups.map((popup) => (
+        <div
+          key={popup.id}
+          className="float-pts-popup"
+          style={{ left: popup.x, top: popup.y }}
+        >
+          {popup.text}
+        </div>
+      ))}
+
+      {/* Main Viewport Container (with Camera Shake + Pre-Sabotage Tell) */}
+      <div
+        className={`w-full max-w-5xl aspect-video relative hud-container hud-cut-corner overflow-hidden flex flex-col shadow-[0_0_50px_rgba(0,243,255,0.2)] border-cyan-400/40 ${screenShake ? 'screen-hit-shake' : ''} ${preSabotageTell ? 'pre-sabotage-tell-active' : ''} ${terminalFlash ? 'terminal-success-flash' : ''}`}
+        ref={stageRef}
+      >
+        {/* HUD Ambient Scan Beam Light Overlay */}
+        <div className="hud-scan-beam-overlay" />
         
-        {/* Layer 0: Top-Down Canvas Map */}
+        {/* Layer 0: Top-Down Canvas Map (With Viewcone System) */}
         <div className="absolute inset-0 w-full h-full z-0">
           <LotCanvas
             allPositions={allPositions}
@@ -568,6 +693,10 @@ export default function Game({
             lockedRooms={[]}
             blackout={blackout}
             ventSealed={false}
+            facingAngle={facingAngle}
+            interactProgress={interactProgress}
+            isInteracting={isInteracting}
+            isDirectorSpectating={false}
           />
         </div>
 
@@ -585,7 +714,8 @@ export default function Game({
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="font-mono text-xs text-amber-400 bg-amber-950/80 border border-amber-400/60 px-3.5 py-1 font-extrabold rounded flex items-center gap-2 shadow-[0_0_12px_rgba(255,183,3,0.3)]">
+              {/* Counter Badge with Counter Punch Scale Animation */}
+              <div className={`font-mono text-xs text-amber-400 bg-amber-950/80 border border-amber-400/60 px-3.5 py-1 font-extrabold rounded flex items-center gap-2 shadow-[0_0_12px_rgba(255,183,3,0.3)] transition-all ${counterPunch ? 'counter-punch-active' : ''}`}>
                 <span>⭐ MY POINTS:</span>
                 <span className="text-white text-sm font-black">{myPoints} PTS</span>
               </div>
@@ -609,19 +739,22 @@ export default function Game({
         <div className="absolute bottom-3 inset-x-4 z-10 flex items-center justify-between pointer-events-none">
           <div className="pointer-events-auto bg-slate-950/90 border border-slate-800 backdrop-blur-md px-3.5 py-1.5 font-mono text-[10px] text-slate-400 flex items-center gap-3 rounded-sm shadow-md">
             <span>NAV: <b className="text-white">WASD / ARROWS</b></span>
-            <span>TASK TERMINAL: <b className="text-cyan-400">KEY E</b></span>
+            <span>TASK TERMINAL: <b className="text-cyan-400">HOLD KEY E</b></span>
           </div>
 
-          {/* Station Enter Action Prompt */}
+          {/* Station Enter Action Prompt with Hold Progress Ring */}
           {nearbyRoom && nearbyRoom.stationId && !activeStationId && (
             <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 bottom-0">
               <button
-                onClick={() => setActiveStationId(nearbyRoom.stationId)}
-                className="btn-cyan font-head text-xs tracking-wider py-2.5 px-6 animate-bounce shadow-[0_0_30px_rgba(0,243,255,0.7)] flex items-center gap-2"
+                onMouseDown={() => {
+                  setIsInteracting(true);
+                }}
+                onMouseUp={() => setIsInteracting(false)}
+                className="btn-cyan font-head text-xs tracking-wider py-2.5 px-6 shadow-[0_0_30px_rgba(0,243,255,0.7)] flex items-center gap-3"
               >
-                <span>⚡ ENTER TERMINAL: {nearbyRoom.name.toUpperCase()}</span>
+                <span>⚡ TERMINAL: {nearbyRoom.name.toUpperCase()}</span>
                 <span className="bg-black text-cyan-400 px-2 py-0.5 font-mono text-[11px] font-bold border border-cyan-400">
-                  PRESS E
+                  {isInteracting ? `${Math.round(interactProgress * 100)}%` : 'HOLD E'}
                 </span>
               </button>
             </div>
@@ -645,7 +778,7 @@ export default function Game({
           </div>
         </div>
 
-        {/* Layer 30: Floating Leaderboard Panel */}
+        {/* Layer 30: Floating Leaderboard Panel (Animated Re-ordering) */}
         {showRoster && (
           <div className="absolute top-16 right-4 z-30 w-72 hud-container hud-cut-corner p-0 shadow-[0_0_30px_rgba(0,243,255,0.25)] animate-fadeIn">
             <div className="container-header py-2 px-3 flex items-center justify-between">
@@ -663,7 +796,7 @@ export default function Game({
                   .map((p, rank) => (
                     <li
                       key={p.id}
-                      className={`p-2.5 bg-slate-900/90 border flex items-center justify-between text-xs font-mono rounded ${p.id === playerId ? 'border-cyan-400 text-white bg-cyan-950/40 shadow-[0_0_10px_rgba(0,243,255,0.2)]' : 'border-slate-800 text-slate-300'}`}
+                      className={`p-2.5 bg-slate-900/90 border flex items-center justify-between text-xs font-mono rounded transition-all duration-300 ${p.id === playerId ? 'border-cyan-400 text-white bg-cyan-950/40 shadow-[0_0_10px_rgba(0,243,255,0.2)]' : 'border-slate-800 text-slate-300'}`}
                     >
                       <div className="flex items-center gap-2.5">
                         <span className={`font-extrabold w-5 text-center ${rank === 0 ? 'text-amber-400' : rank === 1 ? 'text-slate-300' : rank === 2 ? 'text-amber-600' : 'text-slate-500'}`}>
@@ -700,7 +833,6 @@ export default function Game({
               <div className="p-4 flex-1 overflow-auto flex flex-col items-center justify-center bg-slate-950/70">
                 {StationComp && (
                   <StationComp
-                    key={stationResetKey}
                     isControlling={true}
                     onSolve={handleTaskSolve}
                   />
