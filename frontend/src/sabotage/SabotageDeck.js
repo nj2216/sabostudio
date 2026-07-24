@@ -1,19 +1,48 @@
-/**
- * frontend/src/sabotage/SabotageDeck.js
- *
- * Sabotage Engine — handles points-based sabotage execution and network broadcast.
- *
- * All players can earn points by completing tasks and spend points in the Sabotage Console.
- *
- * Message types:
- *   'buy-sabotage'     — guest -> host (payload: { buyerId, effectId, targetPlayerId, stationId })
- *   'sabotage-apply'   — host -> all peers (payload: { effectId, targetPlayerId, stationId, durationMs, buyerName })
- *   'control-swap'     — host -> all peers (payload: { playerAId, playerBId, playerAName, playerBName, durationMs })
- *   'studio-crisis'    — host -> all peers (payload: { type })
- */
-
 import { useEffect, useRef } from 'react';
 import { getEffect } from './SabotageEffect.js';
+
+/**
+ * Applies a sabotage effect on a target DOM element (station overlay or game stage).
+ */
+export function applySabotageEffectLocally(payload, getTargetEl, activeEffectsMap, callbacks = {}) {
+  const { effectId, targetPlayerId, durationMs } = payload ?? {};
+  const effect = getEffect(effectId);
+  if (!effect) return;
+
+  const targetEl = getTargetEl?.() || document.body;
+  if (!targetEl) return;
+
+  // Run cleanup if the same effect is already active
+  const existing = activeEffectsMap.get(effect.id);
+  if (existing) {
+    try { existing(); } catch {}
+  }
+
+  const ctx = {
+    stationId: payload.stationId,
+    targetPlayerId,
+    onFreeze: callbacks.onFreeze,
+  };
+
+  try {
+    const cleanup = effect.apply(targetEl, ctx);
+    if (typeof cleanup === 'function') {
+      activeEffectsMap.set(effect.id, cleanup);
+
+      if (durationMs > 0) {
+        setTimeout(() => {
+          const fn = activeEffectsMap.get(effect.id);
+          if (fn) {
+            try { fn(); } catch {}
+            activeEffectsMap.delete(effect.id);
+          }
+        }, durationMs);
+      }
+    }
+  } catch (err) {
+    console.error('[SabotageDeck] Error applying effect:', effect.id, err);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Host Sabotage Handler
@@ -26,12 +55,21 @@ import { getEffect } from './SabotageEffect.js';
  * @param {Function} getScores — fn returning current scores map { [playerId]: number }
  * @param {Function} setScores — fn updating scores map
  * @param {Array} players      — list of current players
+ * @param {Function} [onLocalSabotageApply] — callback when host is target of sabotage
+ * @param {Function} [onLocalControlSwap]    — callback when control swap triggers
  * @returns {{
  *   fireSabotage: (buyerId: string, effectId: string, targetPlayerId: string, stationId?: string) => boolean,
  *   crisis: (type: string) => void,
  * }}
  */
-export function createSabotageBroadcaster(broadcast, getScores, setScores, players = []) {
+export function createSabotageBroadcaster(
+  broadcast,
+  getScores,
+  setScores,
+  players = [],
+  onLocalSabotageApply = null,
+  onLocalControlSwap = null
+) {
   /**
    * Execute a sabotage purchase.
    * Returns true if successful (buyer had enough points).
@@ -58,7 +96,6 @@ export function createSabotageBroadcaster(broadcast, getScores, setScores, playe
     // Handle Control Swap special sabotage
     if (effectId === 'controlSwap' || effectId === 'earlySwap') {
       let targetId = targetPlayerId;
-      // If targetId not provided or invalid, pick random opponent
       if (!targetId || targetId === buyerId) {
         const opponents = players.filter((p) => p.id !== buyerId);
         targetId = opponents[Math.floor(Math.random() * opponents.length)]?.id;
@@ -68,31 +105,31 @@ export function createSabotageBroadcaster(broadcast, getScores, setScores, playe
       const playerA = players.find((p) => p.id === buyerId);
       const playerB = players.find((p) => p.id === targetId);
 
-      broadcast({
-        type: 'control-swap',
-        payload: {
-          playerAId: buyerId,
-          playerBId: targetId,
-          playerAName: playerA?.name ?? 'Player A',
-          playerBName: playerB?.name ?? 'Player B',
-          durationMs: effect.durationMs || 15000,
-        },
-      });
+      const swapPayload = {
+        playerAId: buyerId,
+        playerBId: targetId,
+        playerAName: playerA?.name ?? 'Player A',
+        playerBName: playerB?.name ?? 'Player B',
+        durationMs: effect.durationMs || 15000,
+      };
+
+      broadcast({ type: 'control-swap', payload: swapPayload });
+      if (onLocalControlSwap) onLocalControlSwap(swapPayload);
       return true;
     }
 
     // Standard sabotage effect
-    broadcast({
-      type: 'sabotage-apply',
-      payload: {
-        effectId,
-        buyerId,
-        buyerName,
-        targetPlayerId,
-        stationId,
-        durationMs: effect.durationMs,
-      },
-    });
+    const payload = {
+      effectId: effect.id,
+      buyerId,
+      buyerName,
+      targetPlayerId,
+      stationId,
+      durationMs: effect.durationMs,
+    };
+
+    broadcast({ type: 'sabotage-apply', payload });
+    if (onLocalSabotageApply) onLocalSabotageApply(payload);
 
     return true;
   }
@@ -113,15 +150,15 @@ export function createSabotageBroadcaster(broadcast, getScores, setScores, playe
  *
  * @param {import('peerjs').DataConnection | null} conn
  * @param {string} localPlayerId
- * @param {React.RefObject<HTMLElement>} stationElRef
+ * @param {Function} getTargetEl
  * @param {{
- *   onControlSwap?: (data: { playerAId: string, playerBId: string, playerAName: string, playerBName: string, durationMs: number }) => void,
+ *   onControlSwap?: (data: any) => void,
  *   onFreeze?: (frozen: boolean) => void,
  *   onCrisis?: (type: string) => void,
  *   onSabotageApplied?: (payload: any) => void,
  * }} [callbacks]
  */
-export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks = {}) {
+export function useSabotageReceiver(conn, localPlayerId, getTargetEl, callbacks = {}) {
   const activeEffects = useRef(new Map());
 
   useEffect(() => {
@@ -136,35 +173,11 @@ export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks
       }
 
       if (msg.type === 'sabotage-apply') {
-        const { effectId, targetPlayerId, durationMs } = msg.payload ?? {};
+        const { targetPlayerId } = msg.payload ?? {};
         callbacks.onSabotageApplied?.(msg.payload);
 
-        if (targetPlayerId !== localPlayerId) return;
-
-        const el = stationElRef?.current;
-        const effect = getEffect(effectId);
-        if (!effect) return;
-
-        const existing = activeEffects.current.get(effectId);
-        if (existing) existing();
-
-        const ctx = {
-          stationId: msg.payload.stationId,
-          targetPlayerId,
-          onFreeze: callbacks.onFreeze,
-        };
-
-        const cleanup = effect.apply(el, ctx);
-        activeEffects.current.set(effectId, cleanup);
-
-        if (durationMs > 0) {
-          setTimeout(() => {
-            const fn = activeEffects.current.get(effectId);
-            if (fn) {
-              fn();
-              activeEffects.current.delete(effectId);
-            }
-          }, durationMs);
+        if (targetPlayerId === localPlayerId) {
+          applySabotageEffectLocally(msg.payload, getTargetEl, activeEffects.current, callbacks);
         }
       }
 
@@ -181,9 +194,10 @@ export function useSabotageReceiver(conn, localPlayerId, stationElRef, callbacks
     const effects = activeEffects.current;
     return () => {
       conn.off('data', handleData);
-      effects.forEach((fn) => fn());
+      effects.forEach((fn) => { try { fn(); } catch {} });
       effects.clear();
     };
-  }, [conn, localPlayerId, stationElRef, callbacks]);
+  }, [conn, localPlayerId, getTargetEl, callbacks]);
 }
+
 

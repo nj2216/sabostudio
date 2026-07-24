@@ -73,7 +73,15 @@ export const ALL_EFFECTS = [
 ];
 
 /** @type {Map<string, SabotageEffect>} */
-export const EFFECTS_BY_ID = new Map(ALL_EFFECTS.map((e) => [e.id, e]));
+export const EFFECTS_BY_ID = new Map();
+
+ALL_EFFECTS.forEach((e) => {
+  if (e && e.id) {
+    EFFECTS_BY_ID.set(e.id, e);
+    const camel = e.id.replace(/-([a-z])/g, (_, g) => g.toUpperCase());
+    EFFECTS_BY_ID.set(camel, e);
+  }
+});
 
 /** Convenience: look up an effect by ID. Returns null if not found. */
 export function getEffect(id) {

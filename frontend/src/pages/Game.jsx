@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LotCanvas from '../map/LotCanvas.jsx';
 import { useTaskZoneTrigger } from '../map/useTaskZoneTrigger.js';
 import { usePlayerMovement } from '../lib/playerMovement.js';
-import { createSabotageBroadcaster, useSabotageReceiver } from '../sabotage/SabotageDeck.js';
+import { applySabotageEffectLocally, createSabotageBroadcaster, useSabotageReceiver } from '../sabotage/SabotageDeck.js';
 import { ALL_EFFECTS } from '../sabotage/SabotageEffect.js';
 import { sendMessage } from '../lib/peer.js';
 import BombSet from '../stations/BombSet/index.jsx';
@@ -342,18 +342,14 @@ export default function Game({
     }, [activeStationId]),
   });
 
-  // ── Sabotage Broadcaster (Host) ──────────────────────────────────────────
-  const sabotageBroadcasterRef = useRef(null);
-  useEffect(() => {
-    if (isHost && broadcast) {
-      sabotageBroadcasterRef.current = createSabotageBroadcaster(
-        broadcast,
-        () => scoresRef.current,
-        setScores,
-        players,
-      );
-    }
-  }, [isHost, broadcast, players]);
+  // ── Stage & Terminal Refs ────────────────────────────────────────────────
+  const stageRef = useRef(null);
+  const hostActiveEffects = useRef(new Map());
+
+  const getTargetEl = useCallback(
+    () => stationElRef.current || stageRef.current || document.body,
+    []
+  );
 
   // ── Control Swap Trigger Handler ─────────────────────────────────────────
   const handleControlSwapEvent = useCallback(
@@ -395,7 +391,7 @@ export default function Game({
     [playerId]
   );
 
-  // ── Sabotage Receiver (Client & Host listener) ───────────────────────────
+  // ── Sabotage Receiver Callbacks ──────────────────────────────────────────
   const sabotageCallbacks = useMemo(
     () => ({
       onControlSwap: handleControlSwapEvent,
@@ -415,7 +411,27 @@ export default function Game({
     [handleControlSwapEvent, playerId]
   );
 
-  useSabotageReceiver(isHost ? null : conn, playerId, stationElRef, sabotageCallbacks);
+  // ── Sabotage Broadcaster (Host) ──────────────────────────────────────────
+  const sabotageBroadcasterRef = useRef(null);
+  useEffect(() => {
+    if (isHost && broadcast) {
+      sabotageBroadcasterRef.current = createSabotageBroadcaster(
+        broadcast,
+        () => scoresRef.current,
+        setScores,
+        players,
+        (payload) => {
+          if (payload.targetPlayerId === playerId) {
+            showToast(`⚠️ Sabotage applied to you by ${payload.buyerName || 'an opponent'}!`);
+            applySabotageEffectLocally(payload, getTargetEl, hostActiveEffects.current, sabotageCallbacks);
+          }
+        },
+        handleControlSwapEvent
+      );
+    }
+  }, [isHost, broadcast, players, playerId, getTargetEl, sabotageCallbacks, handleControlSwapEvent]);
+
+  useSabotageReceiver(isHost ? null : conn, playerId, getTargetEl, sabotageCallbacks);
 
   // ── Network Messages (Host side) ──────────────────────────────────────────
   useEffect(() => {
@@ -558,7 +574,7 @@ export default function Game({
       )}
 
       {/* ── Single 16:9 Among Us Stage Container ────────────────────────────── */}
-      <div className="w-full max-w-5xl aspect-video relative hud-container hud-cut-corner overflow-hidden flex flex-col shadow-[0_0_50px_rgba(0,243,255,0.15)] border-neon-cyan/40">
+      <div className="w-full max-w-5xl aspect-video relative hud-container hud-cut-corner overflow-hidden flex flex-col shadow-[0_0_50px_rgba(0,243,255,0.15)] border-neon-cyan/40" ref={stageRef}>
         
         {/* Layer 0: Main Camera Feed Viewport (Map Canvas) */}
         <div className="absolute inset-0 w-full h-full z-0">
