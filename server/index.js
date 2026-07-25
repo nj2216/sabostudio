@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import 'dotenv/config';
 import db from './db/index.js';
+import { generateRoomCode } from './utils.js';
 
 // ---------------------------------------------------------------------------
 // Startup validation
@@ -43,19 +44,6 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api', apiLimiter);
-
-// ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
-
-function generateRoomCode() {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
-}
 
 // ---------------------------------------------------------------------------
 // POST /api/rooms/create
