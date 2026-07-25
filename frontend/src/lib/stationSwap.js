@@ -42,7 +42,7 @@ const SWAP_MAX_MS = 20_000;
  * @param {string[]} stationIds
  * @returns {Record<string, { viewingStationId: string, controllingStationId: string }>}
  */
-function generateSwapMapping(playerIds, stationIds) {
+export function generateSwapMapping(playerIds, stationIds) {
   if (playerIds.length === 0 || stationIds.length === 0) return {};
 
   // Shuffle stations so the assignment is random each swap
