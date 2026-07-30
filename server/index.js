@@ -143,8 +143,8 @@ app.post('/api/rooms/join', async (req, res) => {
     return res.status(500).json({ error: 'Failed to check player count' });
   }
 
-  if (count >= 8) {
-    return res.status(409).json({ error: 'Room is full (max 8 players)' });
+  if (count >= 6) {
+    return res.status(409).json({ error: 'Room is full (max 6 players)' });
   }
 
   const playerId = nanoid();

@@ -1,139 +1,131 @@
 {
   "mapWidth": 960,
   "mapHeight": 640,
-  "spawnPoint": { "x": 480, "y": 300 },
+  "spawnPoint": { "x": 480, "y": 290 },
+  "directorBoothId": "directors-booth",
+  "talentSpawnPoints": [
+    { "x": 130, "y": 100 },
+    { "x": 350, "y": 100 },
+    { "x": 610, "y": 100 },
+    { "x": 130, "y": 540 },
+    { "x": 830, "y": 540 }
+  ],
+  "stationsRequired": 5,
   "rooms": [
     {
       "id": "bomb-set",
-      "name": "Bomb Set",
+      "name": "Practical FX Stage",
       "stationId": "bomb-set",
       "color": "#3a1a1a",
       "bounds": { "x1": 50, "y1": 50, "x2": 210, "y2": 150 },
       "interactZone": { "x1": 60, "y1": 60, "x2": 200, "y2": 140 },
-      "label": "💣 Bomb Set",
-      "notes": "Wire Cutter task"
+      "label": "💣 Practical FX",
+      "bleedThrough": true,
+      "notes": "Wire Cutter task — defuse a prop explosive before a take ruins it"
     },
     {
       "id": "patty-flipper",
-      "name": "Burger Grill",
+      "name": "Craft Services Set",
       "stationId": "patty-flipper",
       "color": "#3a2a1a",
       "bounds": { "x1": 270, "y1": 50, "x2": 430, "y2": 150 },
       "interactZone": { "x1": 280, "y1": 60, "x2": 420, "y2": 140 },
-      "label": "🍔 Burger Grill",
-      "notes": "Patty Flipper task"
+      "label": "🍔 Craft Services",
+      "notes": "Patty Flipper task — feed the crew before a break-related crisis"
     },
     {
       "id": "radio-booth",
-      "name": "Sound Studio",
+      "name": "Sound Department",
       "stationId": "radio-booth",
       "color": "#1b2a3e",
       "bounds": { "x1": 530, "y1": 50, "x2": 690, "y2": 150 },
       "interactZone": { "x1": 540, "y1": 60, "x2": 680, "y2": 140 },
-      "label": "📻 Sound Studio",
-      "notes": "Frequency Tuner task"
+      "label": "📻 Sound Dept.",
+      "bleedThrough": true,
+      "notes": "Frequency Tuner task — clear audio static for a usable take"
     },
     {
       "id": "lane-weaver",
-      "name": "Test Track",
+      "name": "Stunt Garage",
       "stationId": "lane-weaver",
       "color": "#1a3a1a",
       "bounds": { "x1": 750, "y1": 50, "x2": 910, "y2": 150 },
       "interactZone": { "x1": 760, "y1": 60, "x2": 900, "y2": 140 },
-      "label": "🏎️ Test Track",
+      "label": "🏎️ Stunt Garage",
       "notes": "Lane Weaver task"
     },
     {
       "id": "chem-lab",
-      "name": "Chem Lab",
+      "name": "Makeup & SFX Lab",
       "stationId": "chem-lab",
       "color": "#2e1b3e",
       "bounds": { "x1": 50, "y1": 240, "x2": 210, "y2": 340 },
       "interactZone": { "x1": 60, "y1": 250, "x2": 200, "y2": 330 },
-      "label": "🧪 Chem Lab",
-      "notes": "Chemical Mix task"
+      "label": "🧪 SFX Lab",
+      "bleedThrough": true,
+      "notes": "Chemical Mix task — mix practical effects compounds"
     },
     {
-      "id": "craft-services",
-      "name": "Craft Services",
+      "id": "directors-booth",
+      "name": "Director's Booth",
       "stationId": null,
-      "color": "#2d2d2d",
+      "color": "#2d1515",
       "bounds": { "x1": 370, "y1": 240, "x2": 590, "y2": 340 },
       "interactZone": null,
-      "label": "☕ Craft Services",
-      "isSpawn": true
+      "label": "🎬 Director's Booth",
+      "isDirectorBooth": true,
+      "notes": "Director spawns here during Pre-Production. Sealed glass booth."
     },
     {
       "id": "safe-vault",
-      "name": "Bank Vault",
+      "name": "Studio Vault",
       "stationId": "safe-vault",
       "color": "#3e321b",
       "bounds": { "x1": 750, "y1": 240, "x2": 910, "y2": 340 },
       "interactZone": { "x1": 760, "y1": 250, "x2": 900, "y2": 330 },
-      "label": "🔐 Bank Vault",
-      "notes": "Safe Cracker task"
+      "label": "🔐 Studio Vault",
+      "notes": "Safe Cracker task — recover old production files"
     },
     {
       "id": "bug-swat",
-      "name": "Backlot Garden",
+      "name": "Backlot Maintenance",
       "stationId": "bug-swat",
       "color": "#1b3e36",
       "bounds": { "x1": 50, "y1": 490, "x2": 210, "y2": 590 },
       "interactZone": { "x1": 60, "y1": 500, "x2": 200, "y2": 580 },
-      "label": "🦟 Backlot Garden",
-      "notes": "Bug Swatter task"
+      "label": "🦟 Backlot Maint.",
+      "bleedThrough": true,
+      "notes": "Bug Swatter task — clear pest infestation from set"
     },
     {
       "id": "espresso-bar",
-      "name": "Espresso Bar",
+      "name": "Break Room",
       "stationId": "espresso-bar",
       "color": "#3e2a1b",
       "bounds": { "x1": 270, "y1": 490, "x2": 430, "y2": 590 },
       "interactZone": { "x1": 280, "y1": 500, "x2": 420, "y2": 580 },
-      "label": "☕ Espresso Bar",
-      "notes": "Espresso Rush task"
+      "label": "☕ Break Room",
+      "notes": "Espresso Rush task — prep crew sustenance"
     },
     {
       "id": "rocket-launch",
-      "name": "Command Center",
+      "name": "Pyrotechnics Bay",
       "stationId": "rocket-launch",
       "color": "#3e1b1b",
       "bounds": { "x1": 530, "y1": 490, "x2": 690, "y2": 590 },
       "interactZone": { "x1": 540, "y1": 500, "x2": 680, "y2": 580 },
-      "label": "🚀 Command Center",
+      "label": "🚀 Pyrotechnics Bay",
       "notes": "Rocket Launch task"
     },
     {
       "id": "key-shop",
-      "name": "Prop Shop",
+      "name": "Access Key Station",
       "stationId": "key-shop",
       "color": "#1b333e",
       "bounds": { "x1": 750, "y1": 490, "x2": 910, "y2": 590 },
       "interactZone": { "x1": 760, "y1": 500, "x2": 900, "y2": 580 },
-      "label": "🔑 Prop Shop",
-      "notes": "Key Duplicator task"
-    },
-    {
-      "id": "vent-a",
-      "name": "Staff Vent A",
-      "stationId": null,
-      "color": "#111",
-      "bounds": { "x1": 50, "y1": 590, "x2": 110, "y2": 615 },
-      "interactZone": { "x1": 50, "y1": 590, "x2": 110, "y2": 615 },
-      "isVent": true,
-      "ventPair": "vent-b",
-      "label": "🌀 Vent A"
-    },
-    {
-      "id": "vent-b",
-      "name": "Staff Vent B",
-      "stationId": null,
-      "color": "#111",
-      "bounds": { "x1": 850, "y1": 590, "x2": 910, "y2": 615 },
-      "interactZone": { "x1": 850, "y1": 590, "x2": 910, "y2": 615 },
-      "isVent": true,
-      "ventPair": "vent-a",
-      "label": "🌀 Vent B"
+      "label": "🔑 Access Keys",
+      "notes": "Key Duplicator task — recreate backlot access keys"
     }
   ],
   "corridors": [
@@ -143,14 +135,19 @@
     { "id": "c-vert-left", "bounds": { "x1": 110, "y1": 150, "x2": 150, "y2": 490 } },
     { "id": "c-vert-midleft", "bounds": { "x1": 330, "y1": 150, "x2": 370, "y2": 490 } },
     { "id": "c-vert-midright", "bounds": { "x1": 590, "y1": 150, "x2": 630, "y2": 490 } },
-    { "id": "c-vert-right", "bounds": { "x1": 810, "y1": 150, "x2": 850, "y2": 490 } }
+    { "id": "c-vert-right", "bounds": { "x1": 810, "y1": 150, "x2": 850, "y2": 490 } },
+    { "id": "c-gate-west", "bounds": { "x1": 10, "y1": 460, "x2": 50, "y2": 490 } },
+    { "id": "c-gate-east", "bounds": { "x1": 910, "y1": 460, "x2": 950, "y2": 490 } }
   ],
-  "ventPairs": [
-    {
-      "a": "vent-a",
-      "b": "vent-b",
-      "exitA": { "x": 80, "y": 600 },
-      "exitB": { "x": 880, "y": 600 }
-    }
-  ]
+  "chalkMarks": [
+    { "id": "mark-a", "x": 130, "y": 165, "label": "Mark A" },
+    { "id": "mark-b", "x": 830, "y": 165, "label": "Mark B" },
+    { "id": "mark-c", "x": 130, "y": 475, "label": "Mark C" },
+    { "id": "mark-d", "x": 830, "y": 475, "label": "Mark D" }
+  ],
+  "exitGates": [
+    { "id": "gate-west", "x": 30, "y": 475, "label": "Loading Dock West", "bounds": { "x1": 10, "y1": 460, "x2": 50, "y2": 490 } },
+    { "id": "gate-east", "x": 930, "y": 475, "label": "Loading Dock East", "bounds": { "x1": 910, "y1": 460, "x2": 950, "y2": 490 } }
+  ],
+  "bleedThroughZones": ["bomb-set", "radio-booth", "chem-lab", "bug-swat"]
 }

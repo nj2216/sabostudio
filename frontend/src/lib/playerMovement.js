@@ -1,7 +1,7 @@
 /**
  * frontend/src/lib/playerMovement.js
  *
- * Player movement for Sabotage Studio — "The Lot" free-roam map.
+ * Player movement for Final Cut — "The Lot" free-roam map.
  *
  * Design:
  *   - Client predicts movement locally for instant visual response.
@@ -9,41 +9,32 @@
  *   - Host receives guest moves, merges with own position, and rebroadcasts
  *     'position-update' to all peers — standard host-relay pattern.
  *
+ * Final Cut additions:
+ *   - Role-based speed (Director ~115%, Talent 100%, crouch 50%, downed 25%)
+ *   - Crouch/stealth mode (Shift key) — Talent only
+ *   - Down state — downed Talent crawl slowly
+ *
  * Message types:
- *   'player-move'      — guest -> host,  payload: { x: number, y: number }
- *   'position-update'  — host -> all,    payload: { positions: { [playerId]: { x, y } } }
- *
- * Usage:
- *   const { localPos, allPositions, receiveGuestMove, setBroadcast } =
- *     usePlayerMovement({ playerId, isHost, conn, initialPos, walkableRects });
- *
- *   // Host only — call once broadcast is available:
- *   setBroadcast(broadcastFn);
- *
- *   // Host only — wire into setupHost's onMessage handler:
- *   if (msg.type === 'player-move') receiveGuestMove(senderId, msg.payload);
+ *   'player-move'      — guest -> host,  payload: { x, y, crouching }
+ *   'position-update'  — host -> all,    payload: { positions, crouchStates }
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sendMessage } from './peer.js';
 
-/** How often the movement tick fires (ms). Also the network-send interval. */
-const TICK_MS = 80; // ~12.5 Hz — smooth enough, low enough for P2P
+/** How often the movement tick fires (ms). */
+const TICK_MS = 80; // ~12.5 Hz
 
-/** Pixels the player moves per tick while a key is held. */
-const SPEED = 4;
+/** Base pixels per tick. */
+const SPEED_TALENT = 4;
+const SPEED_DIRECTOR = 4.6; // ~115% of Talent
+const SPEED_CROUCH = 2;     // 50% of Talent
+const SPEED_DOWNED = 1;     // 25% of Talent
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Returns true if the point (px, py) is inside at least one walkable rect.
- *
- * @param {number} px
- * @param {number} py
- * @param {Array<{x1:number,y1:number,x2:number,y2:number}>} walkableRects
- */
 function isWalkable(px, py, walkableRects) {
   return walkableRects.some(
     (r) => px >= r.x1 && px <= r.x2 && py >= r.y1 && py <= r.y2,
@@ -57,59 +48,69 @@ function isWalkable(px, py, walkableRects) {
 /**
  * @param {{
  *   playerId:        string,
- *   controlTargetId?: string, // If control swapped, target player ID being controlled
+ *   role:            'director' | 'talent',
  *   isHost:          boolean,
- *   conn:            import('peerjs').DataConnection | null,  // null for host
+ *   conn:            import('peerjs').DataConnection | null,
  *   initialPos:      { x: number, y: number },
  *   walkableRects:   Array<{x1:number,y1:number,x2:number,y2:number}>,
+ *   playerStatus?:   'alive' | 'downed' | 'carried' | 'on-mark' | 'wrapped' | 'escaped' | 'crew',
  * }} options
- * @returns {{
- *   localPos:         { x: number, y: number },
- *   allPositions:     Record<string, { x: number, y: number }>,
- *   setBroadcast:     (fn: Function) => void,
- *   receiveGuestMove: (targetId: string, pos: { x: number, y: number }) => void,
- * }}
  */
-export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, initialPos, walkableRects }) {
-  const activeTargetId = controlTargetId || playerId;
-  const activeTargetRef = useRef(activeTargetId);
-  useEffect(() => { activeTargetRef.current = activeTargetId; }, [activeTargetId]);
-
+export function usePlayerMovement({ playerId, role = 'talent', isHost, conn, initialPos, walkableRects, playerStatus = 'alive' }) {
   const [allPositions, setAllPositions] = useState({ [playerId]: initialPos });
-  const [facingAngle, setFacingAngle] = useState(Math.PI / 2); // Default down (90 deg)
-  const facingAngleRef = useRef(Math.PI / 2);
+  const [facingAngle, setFacingAngle] = useState(Math.PI / 2);
+  const [isCrouching, setIsCrouching] = useState(false);
+  const [crouchStates, setCrouchStates] = useState({});
 
-  // Mutable refs — avoid stale closures in the interval
+  const facingAngleRef = useRef(Math.PI / 2);
   const allPositionsRef = useRef({ [playerId]: initialPos });
   const broadcastRef = useRef(null);
   const keysRef = useRef(new Set());
   const lastSentRef = useRef(0);
   const walkableRef = useRef(walkableRects);
+  const crouchRef = useRef(false);
+  const statusRef = useRef(playerStatus);
 
   useEffect(() => { walkableRef.current = walkableRects; }, [walkableRects]);
+  useEffect(() => { statusRef.current = playerStatus; }, [playerStatus]);
 
-  /** Host calls this once its broadcast fn is ready. */
   const setBroadcast = useCallback((fn) => { broadcastRef.current = fn; }, []);
 
   // Keyboard input listeners
   useEffect(() => {
-    const onDown = (e) => keysRef.current.add(e.key);
-    const onUp = (e) => keysRef.current.delete(e.key);
+    const onDown = (e) => {
+      keysRef.current.add(e.key);
+      // Shift for crouch (Talent only)
+      if ((e.key === 'Shift') && role === 'talent') {
+        crouchRef.current = true;
+        setIsCrouching(true);
+      }
+    };
+    const onUp = (e) => {
+      keysRef.current.delete(e.key);
+      if (e.key === 'Shift') {
+        crouchRef.current = false;
+        setIsCrouching(false);
+      }
+    };
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
     return () => {
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup', onUp);
     };
-  }, []);
+  }, [role]);
 
   // Movement + send tick
   useEffect(() => {
     const id = setInterval(() => {
-      const targetId = activeTargetRef.current;
+      const status = statusRef.current;
+      // Cannot move if wrapped, escaped, crew, carried, or on-mark
+      if (['wrapped', 'escaped', 'crew', 'carried', 'on-mark'].includes(status)) return;
+
       const keys = keysRef.current;
-      const targetPos = allPositionsRef.current[targetId] || initialPos;
-      const { x, y } = targetPos;
+      const pos = allPositionsRef.current[playerId] || initialPos;
+      const { x, y } = pos;
 
       const up = keys.has('ArrowUp') || keys.has('w') || keys.has('W');
       const down = keys.has('ArrowDown') || keys.has('s') || keys.has('S');
@@ -118,8 +119,20 @@ export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, ini
 
       if (!up && !down && !left && !right) return;
 
-      const dx = (right ? SPEED : 0) - (left ? SPEED : 0);
-      const dy = (down ? SPEED : 0) - (up ? SPEED : 0);
+      // Determine speed based on role and state
+      let speed;
+      if (status === 'downed') {
+        speed = SPEED_DOWNED;
+      } else if (crouchRef.current && role === 'talent') {
+        speed = SPEED_CROUCH;
+      } else if (role === 'director') {
+        speed = SPEED_DIRECTOR;
+      } else {
+        speed = SPEED_TALENT;
+      }
+
+      const dx = (right ? speed : 0) - (left ? speed : 0);
+      const dy = (down ? speed : 0) - (up ? speed : 0);
 
       if (dx !== 0 || dy !== 0) {
         const angle = Math.atan2(dy, dx);
@@ -142,7 +155,7 @@ export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, ini
       }
 
       const newPos = { x: nx, y: ny };
-      const updated = { ...allPositionsRef.current, [targetId]: newPos };
+      const updated = { ...allPositionsRef.current, [playerId]: newPos };
       allPositionsRef.current = updated;
       setAllPositions(updated);
 
@@ -154,15 +167,15 @@ export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, ini
       if (isHost && broadcastRef.current) {
         broadcastRef.current({
           type: 'position-update',
-          payload: { positions: updated },
+          payload: { positions: updated, crouchStates: { [playerId]: crouchRef.current } },
         });
       } else if (!isHost && conn) {
-        sendMessage(conn, 'player-move', { targetId, pos: newPos });
+        sendMessage(conn, 'player-move', { pos: newPos, crouching: crouchRef.current });
       }
     }, TICK_MS);
 
     return () => clearInterval(id);
-  }, [playerId, isHost, conn, initialPos]);
+  }, [playerId, role, isHost, conn, initialPos]);
 
   // Guest: receive 'position-update' from host
   useEffect(() => {
@@ -180,6 +193,9 @@ export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, ini
       if (!positions) return;
       allPositionsRef.current = positions;
       setAllPositions(positions);
+      if (msg.payload?.crouchStates) {
+        setCrouchStates(msg.payload.crouchStates);
+      }
     }
 
     conn.on('data', handleData);
@@ -188,25 +204,34 @@ export function usePlayerMovement({ playerId, controlTargetId, isHost, conn, ini
 
   /**
    * Host: call this when a 'player-move' message arrives from a guest.
-   * Updates the host's canonical position table and rebroadcasts.
    */
   const receiveGuestMove = useCallback(
-    (targetId, pos) => {
-      const updated = { ...allPositionsRef.current, [targetId]: pos };
+    (senderId, pos, crouching = false) => {
+      const updated = { ...allPositionsRef.current, [senderId]: pos };
       allPositionsRef.current = updated;
       setAllPositions(updated);
+      if (crouching !== undefined) {
+        setCrouchStates((prev) => ({ ...prev, [senderId]: crouching }));
+      }
       if (broadcastRef.current) {
         broadcastRef.current({
           type: 'position-update',
-          payload: { positions: updated },
+          payload: { positions: updated, crouchStates: { ...crouchStates, [senderId]: crouching } },
         });
       }
     },
-    [],
+    [crouchStates],
   );
 
   const localPos = allPositions[playerId] || initialPos;
 
-  return { localPos, allPositions, facingAngle, setBroadcast, receiveGuestMove };
+  return {
+    localPos,
+    allPositions,
+    facingAngle,
+    isCrouching,
+    crouchStates,
+    setBroadcast,
+    receiveGuestMove,
+  };
 }
-

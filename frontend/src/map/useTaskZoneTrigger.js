@@ -1,29 +1,17 @@
 /**
  * frontend/src/map/useTaskZoneTrigger.js
  *
- * Detects when the local player's position overlaps a task room's interact zone
- * and the player presses the interact key (E or Enter).
- *
- * Usage:
- *   const { nearbyRoom } = useTaskZoneTrigger({
- *     localPos,
- *     rooms,
- *     onEnterRoom: (roomId, stationId) => { ... },
- *   });
+ * Detects when local player is near interactable elements:
+ *  - Station rooms
+ *  - Chalk Marks
+ *  - Exit Gates
+ *  - Downed / On-mark players (for revive / rescue / pickup)
  */
 
 import { useEffect, useRef, useState } from 'react';
 
-/** Radius around the player's centre that counts as "inside" an interact zone. */
-const PLAYER_RADIUS = 10;
+const INTERACT_RADIUS = 25; // Proximity radius for interaction
 
-/**
- * Returns true if a circle at (px, py) with given radius overlaps a rect.
- * @param {number} px
- * @param {number} py
- * @param {number} radius
- * @param {{x1:number,y1:number,x2:number,y2:number}} rect
- */
 function circleOverlapsRect(px, py, radius, rect) {
   const nearX = Math.max(rect.x1, Math.min(px, rect.x2));
   const nearY = Math.max(rect.y1, Math.min(py, rect.y2));
@@ -32,47 +20,85 @@ function circleOverlapsRect(px, py, radius, rect) {
   return dx * dx + dy * dy <= radius * radius;
 }
 
-/**
- * @param {{
- *   localPos:     { x: number, y: number },
- *   rooms:        import('../map/lotLayout.json').rooms,
- *   onEnterRoom:  (roomId: string, stationId: string | null) => void,
- * }} options
- * @returns {{ nearbyRoom: object | null }}
- */
-export function useTaskZoneTrigger({ localPos, rooms, onEnterRoom }) {
+function distSq(x1, y1, x2, y2) {
+  const dx = x1 - x2;
+  const dy = y1 - y2;
+  return dx * dx + dy * dy;
+}
+
+export function useTaskZoneTrigger({
+  localPos,
+  rooms = [],
+  marks = [],
+  gates = [],
+  allPositions = {},
+  playerStatuses = {},
+  localPlayerId,
+  isDirector = false,
+}) {
   const [nearbyRoom, setNearbyRoom] = useState(null);
-  const onEnterRef = useRef(onEnterRoom);
+  const [nearbyMark, setNearbyMark] = useState(null);
+  const [nearbyGate, setNearbyGate] = useState(null);
+  const [nearbyTargetPlayer, setNearbyTargetPlayer] = useState(null); // downed / on-mark player to interact with
 
-  useEffect(() => { onEnterRef.current = onEnterRoom; }, [onEnterRoom]);
-
-  // Find which room (if any) the player is currently near
   useEffect(() => {
     const { x, y } = localPos;
-    let found = null;
 
+    // 1. Check Station Rooms
+    let foundRoom = null;
     for (const room of rooms) {
       if (!room.interactZone) continue;
-      if (circleOverlapsRect(x, y, PLAYER_RADIUS, room.interactZone)) {
-        found = room;
+      if (circleOverlapsRect(x, y, INTERACT_RADIUS, room.interactZone)) {
+        foundRoom = room;
         break;
       }
     }
+    setNearbyRoom(foundRoom);
 
-    setNearbyRoom(found);
-  }, [localPos, rooms]);
-
-  // Listen for the interact key (E or Enter)
-  useEffect(() => {
-    function handleKey(e) {
-      if (e.key.toLowerCase() !== 'e' && e.key !== 'Enter') return;
-      if (!nearbyRoom) return;
-      onEnterRef.current?.(nearbyRoom.id, nearbyRoom.stationId);
+    // 2. Check Chalk Marks
+    let foundMark = null;
+    for (const mark of marks) {
+      if (distSq(x, y, mark.x, mark.y) <= INTERACT_RADIUS * INTERACT_RADIUS * 2) {
+        foundMark = mark;
+        break;
+      }
     }
+    setNearbyMark(foundMark);
 
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [nearbyRoom]);
+    // 3. Check Exit Gates
+    let foundGate = null;
+    for (const gate of gates) {
+      if (gate.bounds && circleOverlapsRect(x, y, INTERACT_RADIUS, gate.bounds)) {
+        foundGate = gate;
+        break;
+      } else if (distSq(x, y, gate.x, gate.y) <= INTERACT_RADIUS * INTERACT_RADIUS * 2) {
+        foundGate = gate;
+        break;
+      }
+    }
+    setNearbyGate(foundGate);
 
-  return { nearbyRoom };
+    // 4. Check Nearby Players for Interaction
+    let foundPlayer = null;
+    Object.entries(allPositions).forEach(([pid, pos]) => {
+      if (pid === localPlayerId) return;
+      const status = playerStatuses[pid];
+
+      if (isDirector) {
+        // Director can interact with downed players to pick them up
+        if (status === 'downed' && distSq(x, y, pos.x, pos.y) <= INTERACT_RADIUS * INTERACT_RADIUS * 2) {
+          foundPlayer = { id: pid, status, action: 'pickup' };
+        }
+      } else {
+        // Talent can interact with downed players (revive) or on-mark players (rescue)
+        if ((status === 'downed' || status === 'on-mark') && distSq(x, y, pos.x, pos.y) <= INTERACT_RADIUS * INTERACT_RADIUS * 3) {
+          foundPlayer = { id: pid, status, action: status === 'downed' ? 'revive' : 'rescue' };
+        }
+      }
+    });
+    setNearbyTargetPlayer(foundPlayer);
+
+  }, [localPos, rooms, marks, gates, allPositions, playerStatuses, localPlayerId, isDirector]);
+
+  return { nearbyRoom, nearbyMark, nearbyGate, nearbyTargetPlayer };
 }

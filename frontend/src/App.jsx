@@ -8,8 +8,8 @@ import Game from './pages/Game.jsx';
  *
  * "screen" can be:
  *   'landing' — initial create/join screen
- *   'lobby'   — waiting room after creating or joining
- *   'game'    — active game session
+ *   'lobby'   — cast call sheet after creating or joining
+ *   'game'    — active Final Cut match
  */
 function App() {
   const [screen, setScreen] = useState('landing');
@@ -26,8 +26,8 @@ function App() {
     setScreen('lobby');
   }
 
-  function handleGameStart({ peer, playerId, playerName, isHost, players, conn, broadcast, connections, onMessage, swapSettings }) {
-    setGameProps({ peer, playerId, playerName, isHost, players, conn, broadcast, connections, onMessage, swapSettings });
+  function handleGameStart({ peer, playerId, playerName, isHost, players, directorId, conn, broadcast, connections, onMessage }) {
+    setGameProps({ peer, playerId, playerName, isHost, players, directorId, conn, broadcast, connections, onMessage });
     setScreen('game');
   }
 

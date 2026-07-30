@@ -12,15 +12,19 @@
  *   { type: string, payload: any }
  *
  * Known message types:
- *   'player-joined'       — guest -> host, payload: { name, peerId }
- *   'player-list-update'  — host -> all guests, payload: { players: [...] }
- *   'game-start'          — host -> all guests, payload: {}
- *   'station-swap'        — host -> all guests, payload: { mapping, swapAt, nextSwapIn }
- *   'player-move'         — guest -> host, payload: { x, y }
- *   'position-update'     — host -> all guests, payload: { positions: { [playerId]: { x, y } } }
- *   'sabotage-apply'      — host -> all guests, payload: { effectId, targetPlayerId, stationId, durationMs }
- *   'sabotage-clear'      — host -> all guests, payload: { effectId, targetPlayerId }
- *   'studio-crisis'       — host -> all guests, payload: { type }
+ *   'player-joined'       — guest -> host, payload: { name, playerId }
+ *   'player-list-update'  — host -> all guests, payload: { players: [...], directorId }
+ *   'director-assign'     — host -> all guests, payload: { directorId }
+ *   'game-start'          — host -> all guests, payload: { directorId }
+ *   'phase-change'        — host -> all guests, payload: { phase }
+ *   'pa-announcement'     — host -> all guests, payload: { message }
+ *   'director-ability'    — host -> all guests, payload: { effectId, directorId, targetPlayerId, stationId }
+ *   'bleed-through-activate' — host -> target guests, payload: { effectId }
+ *   'player-move'         — guest -> host, payload: { pos: {x, y}, crouching }
+ *   'position-update'     — host -> all guests, payload: { positions: { [playerId]: { x, y } }, crouchStates }
+ *   'station-complete'    — host -> all guests, payload: { stationId, completedCount, completerId }
+ *   'talent-status-update' — host -> all guests, payload: { statuses }
+ *   'crew-distraction'    — crew -> host -> all, payload: { type, playerId }
  *   'ping'/'pong'         — heartbeat
  *
  * TODO (follow-up PRs):

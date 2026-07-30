@@ -1,7 +1,8 @@
 /**
  * frontend/src/pages/Lobby.jsx
  *
- * Redesigned Lobby screen with elevated sci-fi HUD styling.
+ * Final Cut — Cast Call Sheet lobby with Director role assignment.
+ * Host can assign the Director role to any connected player.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -9,26 +10,35 @@ import { connectToHost, sendMessage, setupHost } from '../lib/peer.js';
 
 const POLL_INTERVAL = 3000;
 
+const LORE_TIPS = [
+  'Complete 5 of 10 stations to power the exit doors.',
+  'The Director sees everything. Talent only see their viewcone.',
+  'Downed Talent can crawl. Rescue them before the wrap timer expires.',
+  'Crouch with SHIFT to move slowly and stay hidden.',
+  'When you hear the heartbeat, the Director is close.',
+  '"That\'s a wrap" means someone has been eliminated.',
+];
+
 export default function Lobby({ code, peer, playerId, playerName, isHost, hostPeerId, onGameStart }) {
-  const [players, setPlayers] = useState([{ id: playerId, name: playerName, isHost }]);
+  const [players, setPlayers] = useState([{ id: playerId, name: playerName, isHost, peerId: peer?.id }]);
+  const [directorId, setDirectorId] = useState(isHost ? playerId : null);
   const [gameStarting, setGameStarting] = useState(false);
   const [peerConnected, setPeerConnected] = useState(isHost);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [swapMin, setSwapMin] = useState(15);
-  const [swapMax, setSwapMax] = useState(20);
+  const [tipIdx] = useState(() => Math.floor(Math.random() * LORE_TIPS.length));
 
   const playersRef = useRef(players);
+  const directorIdRef = useRef(directorId);
   const broadcastRef = useRef(null);
   const connectionsRef = useRef(null);
   const onMessageRef = useRef(null);
   const connRef = useRef(null);
   const isTransitioningRef = useRef(false);
 
-  useEffect(() => {
-    playersRef.current = players;
-  }, [players]);
+  useEffect(() => { playersRef.current = players; }, [players]);
+  useEffect(() => { directorIdRef.current = directorId; }, [directorId]);
 
-  // ── Host setup ─────────────────────────────────────────────────────────────
+  // ── Host setup ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isHost) return;
 
@@ -45,7 +55,10 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
 
         broadcast({
           type: 'player-list-update',
-          payload: { players: updated.map((p) => ({ id: p.id, name: p.name, isHost: p.isHost, peerId: p.peerId })) },
+          payload: {
+            players: updated.map((p) => ({ id: p.id, name: p.name, isHost: p.isHost, peerId: p.peerId })),
+            directorId: directorIdRef.current,
+          },
         });
 
         return updated;
@@ -63,7 +76,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     };
   }, [isHost, peer]);
 
-  // ── Guest setup ────────────────────────────────────────────────────────────
+  // ── Guest setup ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (isHost) return;
 
@@ -74,6 +87,12 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
         conn = await connectToHost(peer, hostPeerId, (msg) => {
           if (msg.type === 'player-list-update') {
             setPlayers(msg.payload.players);
+            if (msg.payload.directorId) {
+              setDirectorId(msg.payload.directorId);
+            }
+          }
+          if (msg.type === 'director-assign') {
+            setDirectorId(msg.payload.directorId);
           }
           if (msg.type === 'game-start') {
             isTransitioningRef.current = true;
@@ -84,6 +103,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
               playerName,
               isHost: false,
               players: playersRef.current,
+              directorId: msg.payload.directorId ?? directorIdRef.current,
               conn,
               broadcast: null,
               connections: null,
@@ -96,7 +116,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
         setPeerConnected(true);
         sendMessage(conn, 'player-joined', { name: playerName, playerId });
       } catch (err) {
-        console.error('[SaboGuest] Failed to connect to host:', err);
+        console.error('[FinalCut] Failed to connect to host:', err);
       }
     }
 
@@ -109,7 +129,7 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     };
   }, [isHost, peer, hostPeerId, playerName, playerId, onGameStart]);
 
-  // ── REST API polling ───────────────────────────────────────────────────────
+  // ── REST API polling ────────────────────────────────────────────────────
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -134,12 +154,22 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
     return () => clearInterval(interval);
   }, [code, isHost]);
 
-  // ── Start Game (host only) ─────────────────────────────────────────────────
+  // ── Assign Director (host only) ─────────────────────────────────────────
+  function handleAssignDirector(targetId) {
+    if (!isHost) return;
+    setDirectorId(targetId);
+    if (broadcastRef.current) {
+      broadcastRef.current({ type: 'director-assign', payload: { directorId: targetId } });
+    }
+  }
+
+  // ── Start Game (host only) ──────────────────────────────────────────────
   function handleStartGame() {
     isTransitioningRef.current = true;
     setGameStarting(true);
+    const finalDirectorId = directorIdRef.current || playerId;
     if (broadcastRef.current) {
-      broadcastRef.current({ type: 'game-start', payload: {} });
+      broadcastRef.current({ type: 'game-start', payload: { directorId: finalDirectorId } });
     }
     onGameStart?.({
       peer,
@@ -147,35 +177,33 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
       playerName,
       isHost: true,
       players: playersRef.current,
+      directorId: finalDirectorId,
       conn: null,
       broadcast: broadcastRef.current,
       connections: connectionsRef.current,
       onMessage: onMessageRef.current,
-      swapSettings: { minMs: swapMin * 1000, maxMs: swapMax * 1000 },
     });
   }
 
-  // ── Copy room code to clipboard ───────────────────────────────────────────
+  // ── Copy room code ──────────────────────────────────────────────────────
   async function handleCopyCode() {
     try {
       await navigator.clipboard.writeText(code);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
-    } catch {
-      // Ignore fallback
-    }
+    } catch {}
   }
 
   if (gameStarting) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
-        <div className="hud-container hud-cut-corner max-w-md w-full p-8 text-center flex flex-col items-center gap-5 border-amber-400/80 shadow-[0_0_40px_rgba(255,183,3,0.35)]">
-          <div className="w-14 h-14 border-4 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          <h2 className="font-head text-2xl font-black text-amber-400 tracking-wider animate-pulse">
-            INITIALIZING STUDIO MAP...
+        <div className="hud-container hud-cut-corner max-w-md w-full p-8 text-center flex flex-col items-center gap-5" style={{ borderColor: 'var(--blood-red)', boxShadow: '0 0 40px var(--blood-glow)' }}>
+          <div className="w-14 h-14 border-4 rounded-full animate-spin" style={{ borderColor: 'var(--blood-red)', borderTopColor: 'transparent' }} />
+          <h2 style={{ fontFamily: 'var(--font-head)', fontSize: '24px', color: 'var(--blood-red-bright)', letterSpacing: '4px' }} className="animate-pulse">
+            QUIET ON SET...
           </h2>
-          <p className="font-mono text-xs text-slate-300 tracking-wider uppercase">
-            SYNCHRONIZING P2P DATASTREAMS & STATIONS
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', letterSpacing: '2px', textTransform: 'uppercase' }}>
+            SYNCHRONIZING DATASTREAMS &amp; LOADING THE LOT
           </p>
         </div>
       </div>
@@ -184,118 +212,159 @@ export default function Lobby({ code, peer, playerId, playerName, isHost, hostPe
 
   return (
     <div className="h-screen max-h-screen overflow-hidden flex flex-col items-center justify-between p-4 sm:p-6 relative z-10">
-      {/* Top HUD Nav Header */}
+      {/* Top HUD */}
       <div className="w-full max-w-2xl">
         <div className="top-hud">
           <div className="flex items-center gap-4">
-            <h1 className="brand-logo text-xl">
-              SABOTAGE <span>STUDIO</span>
+            <h1 className="brand-logo" style={{ fontSize: '22px' }}>
+              FINAL <span>CUT</span>
             </h1>
-            <span className="level-badge">SQUAD LOBBY</span>
+            <span className="level-badge">CAST CALL</span>
           </div>
           <div className="timecode-box">
-            {isHost ? 'DIRECTOR HOST' : 'OPERATOR'}
+            {isHost ? 'SESSION HOST' : 'CONNECTED'}
           </div>
         </div>
       </div>
 
       <div className="w-full max-w-2xl flex-1 flex flex-col justify-center gap-4 min-h-0 py-2">
-        {/* Room code display card */}
+        {/* Room Code Display */}
         <div className="hud-container hud-cut-corner p-0">
           <div className="container-header">
             <div className="container-title">
-              <span className="status-indicator" style={{ background: '#ffb703', boxShadow: '0 0 10px #ffb703' }} />
-              SESSION ACCESS CODE
+              <span className="status-indicator" style={{ background: 'var(--amber)', boxShadow: '0 0 10px var(--amber)' }} />
+              ACCESS CODE
             </div>
-            <span className="container-subtitle" style={{ color: '#ffb703' }}>SHARE WITH SQUAD</span>
+            <span className="container-subtitle">SHARE WITH CAST</span>
           </div>
           <div className="p-5 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="font-mono text-3xl sm:text-4xl font-black text-amber-400 tracking-[0.2em] drop-shadow-[0_0_14px_rgba(255,183,3,0.5)]">
-                {code}
-              </span>
-            </div>
-            <button onClick={handleCopyCode} className="icon-btn font-mono text-xs">
-              {copySuccess ? '✓ COPIED CODE' : '📋 COPY ACCESS CODE'}
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'clamp(24px, 5vw, 36px)', fontWeight: 900, color: 'var(--amber)', letterSpacing: '0.2em', textShadow: '0 0 14px var(--amber-glow)' }}>
+              {code}
+            </span>
+            <button id="copy-code-btn" onClick={handleCopyCode} className="icon-btn" style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+              {copySuccess ? '✓ COPIED' : '📋 COPY CODE'}
             </button>
           </div>
         </div>
 
-        {/* Player roster card */}
+        {/* Cast Call Sheet */}
         <div className="hud-container hud-cut-corner p-0">
           <div className="container-header">
             <div className="container-title">
               <span className="status-indicator" />
-              SQUAD ROSTER ({players.length}/8)
+              CAST CALL SHEET ({players.length}/6)
             </div>
             {!peerConnected && !isHost && (
-              <span className="font-mono text-xs text-amber-400 animate-pulse">CONNECTING TO HOST...</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--amber)', animation: 'paFlicker 2s infinite' }}>
+                CONNECTING TO HOST...
+              </span>
             )}
           </div>
           <div className="p-5 flex flex-col gap-3">
             <ul className="flex flex-col gap-2.5 max-h-52 overflow-y-auto pr-1">
-              {players.map((p) => (
-                <li
-                  key={p.id ?? p.peerId ?? p.name}
-                  className="flex items-center justify-between p-3 bg-slate-900/80 border border-slate-800 hover:border-cyan-500/40 transition-all rounded-sm"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded flex items-center justify-center font-head font-black text-sm ${p.isHost ? 'bg-purple-600 text-white shadow-[0_0_10px_rgba(168,85,247,0.5)]' : 'bg-cyan-500/20 text-cyan-400 border border-cyan-400/40'}`}>
-                      {p.name?.[0]?.toUpperCase() ?? '?'}
+              {players.map((p) => {
+                const isDirector = p.id === directorId;
+                return (
+                  <li
+                    key={p.id ?? p.peerId ?? p.name}
+                    className={isDirector ? 'director-card' : 'talent-card'}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', borderRadius: '2px', transition: 'all 0.2s ease' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        style={{
+                          width: '36px', height: '36px', borderRadius: '4px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontFamily: 'var(--font-head)', fontWeight: 400, fontSize: '16px',
+                          background: isDirector ? 'var(--blood-red)' : 'rgba(196, 163, 90, 0.15)',
+                          color: isDirector ? '#fff' : 'var(--amber)',
+                          border: isDirector ? '2px solid var(--blood-red-bright)' : '1px solid rgba(196, 163, 90, 0.3)',
+                          boxShadow: isDirector ? '0 0 12px var(--blood-glow)' : 'none',
+                        }}
+                      >
+                        {p.name?.[0]?.toUpperCase() ?? '?'}
+                      </div>
+                      <span style={{ fontFamily: 'var(--font-sub)', fontWeight: 700, fontSize: '16px', color: 'var(--text-main)' }}>
+                        {p.name}
+                      </span>
                     </div>
-                    <span className="font-sub font-bold text-base text-slate-100">{p.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {p.isHost ? (
-                      <span className="font-mono text-[10px] bg-purple-500/20 border border-purple-500/80 text-purple-300 px-2.5 py-1 tracking-widest font-bold rounded-sm">
-                        DIRECTOR HOST
-                      </span>
-                    ) : (
-                      <span className="font-mono text-[10px] bg-cyan-500/10 border border-cyan-400/40 text-cyan-300 px-2.5 py-1 tracking-widest rounded-sm">
-                        OPERATOR
-                      </span>
-                    )}
-                  </div>
-                </li>
-              ))}
+                    <div className="flex items-center gap-2">
+                      {isDirector ? (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', background: 'rgba(139, 0, 0, 0.3)', border: '1px solid var(--blood-red)', color: 'var(--blood-red-bright)', padding: '4px 10px', letterSpacing: '2px', borderRadius: '2px' }}>
+                          🎬 DIRECTOR
+                        </span>
+                      ) : (
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', background: 'rgba(196, 163, 90, 0.1)', border: '1px solid rgba(196, 163, 90, 0.3)', color: 'var(--amber)', padding: '4px 10px', letterSpacing: '2px', borderRadius: '2px' }}>
+                          🎭 TALENT
+                        </span>
+                      )}
+                      {isHost && !isDirector && (
+                        <button
+                          onClick={() => handleAssignDirector(p.id)}
+                          className="icon-btn"
+                          style={{ fontSize: '9px', padding: '4px 8px' }}
+                          title="Assign as Director"
+                        >
+                          SET DIRECTOR
+                        </button>
+                      )}
+                      {isHost && isDirector && p.id !== playerId && (
+                        <button
+                          onClick={() => handleAssignDirector(playerId)}
+                          className="icon-btn"
+                          style={{ fontSize: '9px', padding: '4px 8px' }}
+                          title="Reclaim Director role"
+                        >
+                          RECLAIM
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
 
             {players.length < 2 && (
-              <div className="p-3 bg-amber-950/40 border border-amber-500/40 text-amber-300 font-mono text-xs text-center tracking-wider">
-                WAITING FOR AT LEAST 2 PLAYERS TO LAUNCH MISSION...
+              <div style={{ padding: '12px', background: 'rgba(196, 163, 90, 0.08)', border: '1px solid rgba(196, 163, 90, 0.2)', color: 'var(--amber)', fontFamily: 'var(--font-mono)', fontSize: '11px', textAlign: 'center', letterSpacing: '2px' }}>
+                WAITING FOR AT LEAST 2 CAST MEMBERS...
               </div>
             )}
           </div>
         </div>
 
-        {/* Mission Gameplay Intel */}
+        {/* Production Brief */}
         <div className="hud-container hud-cut-corner p-0">
           <div className="container-header">
             <div className="container-title">
-              <span className="status-indicator" style={{ background: '#00ff9d', boxShadow: '0 0 10px #00ff9d' }} />
-              MISSION INTEL
+              <span className="status-indicator" style={{ background: 'var(--amber)', boxShadow: '0 0 10px var(--amber)' }} />
+              PRODUCTION BRIEF
             </div>
-            <span className="container-subtitle" style={{ color: '#00ff9d' }}>POINTS & SABOTAGE</span>
+            <span className="container-subtitle">INTEL</span>
           </div>
-          <div className="p-4 text-xs font-sub text-slate-300 flex flex-col gap-2 leading-relaxed">
-            <p>🎯 Complete mini-game tasks around the studio lot to earn <b className="text-amber-400">+100 PTS</b> each.</p>
-            <p>⚡ Spend points in the <b className="text-red-400">SABOTAGE SHOP</b> to execute attacks on opponents.</p>
-            <p>🔄 Trigger <b className="text-cyan-300">Control Swap</b> (100 PTS) to hijack an opponent's movements!</p>
+          <div className="p-4 flex flex-col gap-2" style={{ fontFamily: 'var(--font-sub)', fontSize: '13px', color: 'var(--text-dim)', lineHeight: '1.7' }}>
+            <p>🎬 Complete <b style={{ color: 'var(--amber)' }}>5 of 10 stations</b> to power the exit doors and escape the lot.</p>
+            <p>👁️ The <b style={{ color: 'var(--blood-red-bright)' }}>Director</b> sees everything. Talent only see their viewcone.</p>
+            <p>⛓️ Downed Talent are dragged to <b style={{ color: 'var(--chalk-white)' }}>chalk Marks</b>. Rescue them before the 60s wrap timer!</p>
+            <p style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '11px', marginTop: '4px' }}>
+              💡 {LORE_TIPS[tipIdx]}
+            </p>
           </div>
         </div>
 
-        {/* Action Button */}
+        {/* Start Game */}
         {isHost ? (
           <button
+            id="start-game-btn"
             onClick={handleStartGame}
             disabled={players.length < 2}
-            className="btn-green w-full mt-2"
+            className="fire-button w-full mt-2"
+            style={{ fontSize: '18px', padding: '16px 0' }}
           >
-            {players.length < 2 ? '⏳ WAITING FOR OPERATORS...' : '▶️ LAUNCH MISSION SESSION'}
+            {players.length < 2 ? '⏳ WAITING FOR CAST...' : '🎬 AND... ACTION!'}
           </button>
         ) : (
-          <div className="p-4 bg-slate-900/70 border border-slate-800 text-slate-400 font-mono text-xs text-center tracking-wider">
-            WAITING FOR THE HOST TO START THE MISSION...
+          <div style={{ padding: '16px', background: 'rgba(14, 10, 8, 0.8)', border: '1px solid var(--panel-border)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '12px', textAlign: 'center', letterSpacing: '2px' }}>
+            WAITING FOR THE HOST TO CALL ACTION...
           </div>
         )}
       </div>

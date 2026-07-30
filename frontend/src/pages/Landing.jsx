@@ -1,11 +1,21 @@
 /**
  * frontend/src/pages/Landing.jsx
  *
- * Redesigned Landing screen with premium high-tech sci-fi studio aesthetics.
+ * Final Cut — Horror-themed Landing screen.
+ * Film noir / abandoned studio aesthetic with diegetic lore.
  */
 
 import { useState } from 'react';
 import { createPeer } from '../lib/peer.js';
+
+const LORE_QUOTES = [
+  '"The last reel was never found."',
+  '"Quiet on set."',
+  '"Nobody who watched that reel ever spoke about it again."',
+  '"The production was quietly buried."',
+  '"He is still trying to finish his movie."',
+  '"The script stopped being fiction."',
+];
 
 export default function Landing({ onHostReady, onGuestReady }) {
   const [hostName, setHostName] = useState('');
@@ -13,11 +23,11 @@ export default function Landing({ onHostReady, onGuestReady }) {
   const [joinName, setJoinName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loreIdx] = useState(() => Math.floor(Math.random() * LORE_QUOTES.length));
 
-  // ── Create Room ─────────────────────────────────────────────────────────────
   async function handleCreate() {
     if (!hostName.trim()) {
-      setError('Please enter your display name.');
+      setError('Enter your name to proceed.');
       return;
     }
     setError('');
@@ -40,14 +50,13 @@ export default function Landing({ onHostReady, onGuestReady }) {
     }
   }
 
-  // ── Join Room ────────────────────────────────────────────────────────────────
   async function handleJoin() {
     if (!joinCode.trim()) {
-      setError('Please enter a room code.');
+      setError('Enter the access code.');
       return;
     }
     if (!joinName.trim()) {
-      setError('Please enter your display name.');
+      setError('Enter your name to proceed.');
       return;
     }
     setError('');
@@ -82,66 +91,75 @@ export default function Landing({ onHostReady, onGuestReady }) {
 
   return (
     <div className="h-screen max-h-screen overflow-hidden flex flex-col items-center justify-between p-4 sm:p-6 relative z-10">
-      {/* Top HUD Nav Header */}
+      {/* Top HUD Nav */}
       <div className="w-full max-w-5xl">
         <div className="top-hud">
           <div className="flex items-center gap-4">
-            <h1 className="brand-logo text-xl sm:text-2xl">
-              SABOTAGE <span>STUDIO</span>
+            <h1 className="brand-logo text-2xl sm:text-3xl">
+              FINAL <span>CUT</span>
             </h1>
-            <span className="level-badge">v1.2.0 // P2P NET</span>
+            <span className="level-badge">HIGHLINE STUDIOS // 1987</span>
           </div>
           <div className="flex items-center gap-6 hidden md:flex">
             <div className="flex flex-col items-end">
-              <span className="font-mono text-[9px] text-slate-400 uppercase tracking-widest">ENCRYPTION</span>
-              <span className="font-head text-xs text-cyan-400 tracking-wider">WEBRTC DATASTREAM</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                NETWORK
+              </span>
+              <span style={{ fontFamily: 'var(--font-head)', fontSize: '13px', color: 'var(--amber)', letterSpacing: '2px' }}>
+                P2P DATASTREAM
+              </span>
             </div>
             <div className="timecode-box">SYS.ONLINE</div>
           </div>
         </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <div className="w-full max-w-5xl flex-1 flex flex-col items-center justify-center gap-6 min-h-0 py-4">
-        <div className="text-center space-y-1">
-          <p className="font-mono text-xs text-cyan-400/80 tracking-widest uppercase">
-            [ TACTICAL GAME DIRECTOR INTERFACE & MULTIPLAYER CONSOLE ]
+        {/* Lore Quote */}
+        <div className="text-center space-y-2">
+          <p style={{ fontFamily: 'var(--font-sub)', fontSize: '14px', color: 'var(--amber)', letterSpacing: '2px', opacity: 0.7, fontStyle: 'italic' }}>
+            {LORE_QUOTES[loreIdx]}
           </p>
-          <h2 className="font-head text-2xl sm:text-3xl text-slate-100 font-extrabold tracking-wide">
-            ENTER THE MULTIPLAYER ARENA
+          <h2 style={{ fontFamily: 'var(--font-head)', fontSize: 'clamp(22px, 4vw, 32px)', color: 'var(--text-main)', letterSpacing: '4px' }}>
+            A SABOTAGE STUDIO PRODUCTION
           </h2>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '1px' }}>
+            1 DIRECTOR vs 3–5 TALENT // ASYMMETRIC HORROR // BROWSER P2P
+          </p>
         </div>
 
         {error && (
-          <div className="w-full max-w-3xl bg-red-950/90 border border-red-500/80 px-4 py-3 text-red-400 font-mono text-xs flex items-center gap-3 shadow-[0_0_20px_rgba(255,0,85,0.4)]">
-            <span className="w-2.5 h-2.5 bg-red-500 animate-ping rounded-full" />
-            <span>CRITICAL ALERT: {error}</span>
+          <div className="w-full max-w-3xl" style={{ background: 'rgba(139, 0, 0, 0.2)', border: '1px solid rgba(139, 0, 0, 0.6)', padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--blood-red-bright)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ width: '8px', height: '8px', background: 'var(--blood-red-bright)', borderRadius: '50%', animation: 'pulseGlow 1s infinite' }} />
+            <span>ALERT: {error}</span>
           </div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 w-full max-w-4xl">
-          {/* Create Room Card */}
+          {/* Direct A Film Card */}
           <div className="hud-container hud-cut-corner p-0">
             <div className="container-header">
               <div className="container-title">
                 <span className="status-indicator" />
-                CREATE SQUAD LOBBY
+                DIRECT A FILM
               </div>
-              <span className="container-subtitle">HOST MODE</span>
+              <span className="container-subtitle" style={{ color: 'var(--blood-red-bright)' }}>THE DIRECTOR</span>
             </div>
 
             <div className="p-6 flex flex-col gap-5">
-              <p className="font-sub text-slate-300 text-sm leading-relaxed">
-                Initialize authoritative host peer session. Share your unique room code with players to launch tasks & sabotages.
+              <p style={{ fontFamily: 'var(--font-sub)', fontSize: '14px', color: 'var(--text-dim)', lineHeight: '1.7' }}>
+                Take the chair. Initialize a session and share the access code. You decide who hunts and who hides.
               </p>
 
               <div className="flex flex-col gap-2">
-                <label className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">
-                  DIRECTOR CALLSIGN
+                <label style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                  YOUR NAME
                 </label>
                 <input
+                  id="host-name-input"
                   type="text"
-                  placeholder="Enter display name..."
+                  placeholder="Enter your name..."
                   value={hostName}
                   onChange={(e) => setHostName(e.target.value)}
                   maxLength={20}
@@ -150,6 +168,7 @@ export default function Landing({ onHostReady, onGuestReady }) {
               </div>
 
               <button
+                id="create-room-btn"
                 onClick={handleCreate}
                 disabled={loading}
                 className="fire-button mt-2"
@@ -157,51 +176,54 @@ export default function Landing({ onHostReady, onGuestReady }) {
                 {loading ? (
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    INITIALIZING PEER...
+                    INITIALIZING...
                   </span>
                 ) : (
-                  '🚀 LAUNCH NEW ROOM'
+                  '🎬 CREATE SESSION'
                 )}
               </button>
             </div>
           </div>
 
-          {/* Join Room Card */}
+          {/* Join The Cast Card */}
           <div className="hud-container hud-cut-corner p-0">
             <div className="container-header">
               <div className="container-title">
-                <span className="status-indicator style-amber" style={{ background: '#ffb703', boxShadow: '0 0 10px #ffb703' }} />
-                JOIN GAME SESSION
+                <span className="status-indicator" style={{ background: 'var(--amber)', boxShadow: '0 0 10px var(--amber)' }} />
+                JOIN THE CAST
               </div>
-              <span className="container-subtitle" style={{ color: '#ffb703' }}>GUEST MODE</span>
+              <span className="container-subtitle">TALENT</span>
             </div>
 
             <div className="p-6 flex flex-col gap-5">
-              <p className="font-sub text-slate-300 text-sm leading-relaxed">
-                Connect directly to an existing host session via a 6-digit access code and join the squad.
+              <p style={{ fontFamily: 'var(--font-sub)', fontSize: '14px', color: 'var(--text-dim)', lineHeight: '1.7' }}>
+                You were told this was an audition. Enter the access code and step onto the lot. Try to survive.
               </p>
 
               <div className="flex flex-col gap-2">
-                <label className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">
+                <label style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '2px' }}>
                   ACCESS CODE
                 </label>
                 <input
+                  id="join-code-input"
                   type="text"
                   placeholder="e.g. ABC123"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   maxLength={6}
-                  className="cyber-input tracking-widest uppercase font-bold text-amber-400"
+                  className="cyber-input"
+                  style={{ letterSpacing: '6px', textTransform: 'uppercase', fontWeight: 'bold', color: 'var(--amber)' }}
                 />
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="font-mono text-[10px] text-slate-400 uppercase tracking-wider">
-                  OPERATOR CALLSIGN
+                <label style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                  YOUR NAME
                 </label>
                 <input
+                  id="join-name-input"
                   type="text"
-                  placeholder="Enter display name..."
+                  placeholder="Enter your name..."
                   value={joinName}
                   onChange={(e) => setJoinName(e.target.value)}
                   maxLength={20}
@@ -210,17 +232,19 @@ export default function Landing({ onHostReady, onGuestReady }) {
               </div>
 
               <button
+                id="join-room-btn"
                 onClick={handleJoin}
                 disabled={loading}
-                className="btn-cyan mt-2"
+                className="btn-amber mt-2"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                    CONNECTING PEER...
+                    CONNECTING...
                   </span>
                 ) : (
-                  '🎲 JOIN ROOM SESSION'
+                  '🎭 JOIN SESSION'
                 )}
               </button>
             </div>
@@ -228,10 +252,10 @@ export default function Landing({ onHostReady, onGuestReady }) {
         </div>
       </div>
 
-      {/* Footer System Info */}
+      {/* Footer */}
       <div className="w-full max-w-5xl text-center py-2">
-        <span className="font-mono text-[10px] text-slate-500 tracking-wider">
-          SABOTAGE STUDIO INTERFACE &copy; 2026 // AUTHORITATIVE P2P ENGINE
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)', letterSpacing: '2px' }}>
+          FINAL CUT — A SABOTAGE STUDIO PRODUCTION &copy; 2026 // HIGHLINE STUDIOS
         </span>
       </div>
     </div>

@@ -1,24 +1,29 @@
 /**
  * frontend/src/pages/Game.jsx
  *
- * Game screen with UX & Feel Juice:
- *   - 100° FOV Viewcone & Fog-of-War for all players
- *   - Holding E Interact charge-up radial ring (0.5s)
- *   - Floating "+N PTS" arcing text popups
- *   - Counter badge scale punch (1.18x) on point gains
- *   - Sabotage impact camera shake + chromatic aberration
- *   - Pre-sabotage edge static flicker
- *   - Sabotage Shop unlock progress meters
- *   - Variable critical task completion rewards (+150 PTS)
- *   - Animated live leaderboard rank re-ordering
+ * Final Cut — Asymmetric Horror Game Screen
+ *
+ * Game phases:
+ *   1. Pre-Production (15s) — Director locked in booth, Talent scatter
+ *   2. Rolling (main) — Talent complete stations, Director hunts & downs
+ *   3. Wrap-Up — 5 stations complete, exit gates power on
+ *
+ * Kill & Death mechanics:
+ *   - Director attack downs Talent (alive -> downed / crawling)
+ *   - Director picks up downed Talent (downed -> carried)
+ *   - Director mounts carried Talent on Mark (carried -> on-mark)
+ *   - 60s Wrap Timer counts down on Mark (0s -> wrapped / DEAD)
+ *   - Teammates revive downed (Hold E 3s) or rescue from Mark (Hold E 3s)
+ *   - Exit Gate opening (Hold E 4s) & Escape trigger
+ *   - End Match Summary screen (Director Win vs Talent Escape)
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LotCanvas from '../map/LotCanvas.jsx';
 import { useTaskZoneTrigger } from '../map/useTaskZoneTrigger.js';
 import { usePlayerMovement } from '../lib/playerMovement.js';
-import { applySabotageEffectLocally, createSabotageBroadcaster, useSabotageReceiver } from '../sabotage/SabotageDeck.js';
-import { ALL_EFFECTS } from '../sabotage/SabotageEffect.js';
+import { createDirectorBroadcaster, applyAbilityLocally, useAbilityReceiver } from '../sabotage/DirectorAbilities.js';
+import { DIRECTOR_ABILITIES, ABILITY_CATEGORIES } from '../sabotage/DirectorKit.js';
 import { sendMessage } from '../lib/peer.js';
 import WireCutter from '../stations/WireCutter/index.jsx';
 import PattyFlipper from '../stations/PattyFlipper/index.jsx';
@@ -50,221 +55,286 @@ const WALKABLE_RECTS = [
   ...layout.corridors.map((c) => c.bounds),
 ];
 
-const PLAYER_COLOURS = [
-  'text-purple-400', 'text-cyan-400', 'text-emerald-400', 'text-amber-400',
-  'text-rose-400', 'text-pink-400', 'text-teal-400', 'text-orange-400',
-];
+const PRE_PRODUCTION_DURATION = 15_000; // 15 seconds
+const WRAP_TIMER_DURATION = 60; // 60 seconds
+const CHASE_RANGE = 25; // pixels — melee range for downing Talent
+const TERROR_RADIUS = 200; // pixels — heartbeat audio range
+const HOLD_ACTION_DURATION = 3000; // 3 seconds for revive / rescue
+const GATE_HOLD_DURATION = 4000;   // 4 seconds to open exit gate
 
-const CRISIS_MESSAGES = {
-  'power-outage': {
-    title: '⚡ POWER OUTAGE CRISIS',
-    body: 'Emergency power active. All operators: vision restricted for 8 seconds!',
-    colour: '#ffb703',
-  },
-  'fire-alarm': {
-    title: '🔥 FIRE ALARM ALERT',
-    body: 'CRITICAL HAZARD! Vacate immediately and return to safety!',
-    colour: '#ff0055',
-  },
-  'take-too-many': {
-    title: '🎬 EMERGENCY RESHOOT',
-    body: 'Sabotage threshold exceeded! Execute emergency reshoot sequence.',
-    colour: '#a855f7',
-  },
-};
+// ── PA Announcement Component ─────────────────────────────────────────────
 
-function StudioCrisisOverlay({ type, onDismiss }) {
-  const info = CRISIS_MESSAGES[type];
-  if (!info) return null;
+function PABar({ message }) {
+  if (!message) return null;
+  return (
+    <div className="pa-bar animate-fadeIn" key={message}>
+      {message}
+    </div>
+  );
+}
+
+// ── Director Ability Panel ────────────────────────────────────────────────
+
+function DirectorAbilityPanel({ onUseAbility, getCooldownRemaining, targetTalent, talents }) {
+  const [activeTab, setActiveTab] = useState('ALL');
+  const [selectedAbility, setSelectedAbility] = useState(DIRECTOR_ABILITIES[0]?.id ?? '');
+  const [selectedTarget, setSelectedTarget] = useState(targetTalent || talents[0]?.id || '');
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => forceUpdate((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (targetTalent) setSelectedTarget(targetTalent);
+  }, [targetTalent]);
+
+  const filtered = DIRECTOR_ABILITIES.filter(
+    (a) => activeTab === 'ALL' || a.category.toUpperCase() === activeTab
+  );
+
+  function handleFire() {
+    if (!selectedAbility || !selectedTarget) return;
+    onUseAbility(selectedAbility, selectedTarget);
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fadeIn">
-      <div
-        className="hud-container hud-cut-corner max-w-md w-full p-6 text-center shadow-[0_0_50px_rgba(255,0,85,0.5)] flex flex-col items-center gap-4 border-2"
-        style={{ borderColor: info.colour }}
-      >
-        <div className="flex items-center gap-2 font-mono text-xs tracking-widest text-slate-300 uppercase">
-          <span className="w-2.5 h-2.5 rounded-full animate-ping" style={{ background: info.colour }} />
-          CRISIS MATRIX TRIGGERED
+    <div className="absolute top-16 left-4 z-30 w-80 hud-container hud-cut-corner p-0 director-hud animate-fadeIn" style={{ maxHeight: '75vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div className="container-header py-2 px-3 flex items-center justify-between">
+        <div className="container-title" style={{ fontSize: '12px' }}>
+          🎬 DIRECTOR'S KIT
         </div>
-        <h2 className="font-head text-2xl font-black tracking-wider" style={{ color: info.colour }}>
-          {info.title}
-        </h2>
-        <p className="font-sub text-slate-200 text-sm leading-relaxed">{info.body}</p>
+      </div>
+
+      <div className="p-3 flex flex-col gap-3 overflow-y-auto" style={{ flex: 1 }}>
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          {ABILITY_CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setActiveTab(cat)}
+              className={`tab-btn ${activeTab === cat ? 'active' : ''}`}
+              style={{ fontSize: '9px', padding: '6px 8px', flex: 'none', minWidth: 'auto' }}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-2 max-h-44 overflow-y-auto pr-1">
+          {filtered.map((ability) => {
+            const cooldown = getCooldownRemaining(ability.id);
+            const isReady = cooldown <= 0;
+            const isSelected = selectedAbility === ability.id;
+            const isSignature = ability.category === 'signature';
+
+            return (
+              <div
+                key={ability.id}
+                onClick={() => setSelectedAbility(ability.id)}
+                style={{
+                  padding: '8px 10px',
+                  border: isSelected
+                    ? isSignature ? '2px solid var(--amber)' : '2px solid var(--blood-red)'
+                    : '1px solid rgba(139, 0, 0, 0.2)',
+                  background: isSelected ? 'rgba(139, 0, 0, 0.15)' : 'rgba(10, 8, 6, 0.6)',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  opacity: isReady ? 1 : 0.5,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <span style={{ fontFamily: 'var(--font-head)', fontSize: '12px', color: isSignature ? 'var(--amber)' : 'var(--text-main)', letterSpacing: '1px' }}>
+                    {isSignature ? '★ ' : ''}{ability.name}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', padding: '2px 6px', borderRadius: '2px', background: isReady ? 'rgba(34, 197, 94, 0.2)' : 'rgba(139, 0, 0, 0.2)', color: isReady ? 'var(--exit-green)' : 'var(--blood-red-bright)', border: `1px solid ${isReady ? 'rgba(34, 197, 94, 0.4)' : 'rgba(139, 0, 0, 0.4)'}` }}>
+                    {isReady ? 'READY' : `${Math.ceil(cooldown / 1000)}s`}
+                  </span>
+                </div>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                  {ability.description}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--panel-border)', paddingTop: '8px' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '2px' }}>
+            TARGET TALENT
+          </span>
+          <div className="flex gap-1.5 mt-1.5 flex-wrap">
+            {talents.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setSelectedTarget(t.id)}
+                style={{
+                  padding: '4px 8px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '10px',
+                  border: selectedTarget === t.id ? '1px solid var(--blood-red)' : '1px solid var(--panel-border)',
+                  background: selectedTarget === t.id ? 'rgba(139, 0, 0, 0.2)' : 'transparent',
+                  color: selectedTarget === t.id ? 'var(--blood-red-bright)' : 'var(--text-dim)',
+                  cursor: 'pointer',
+                  borderRadius: '2px',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <button
-          onClick={onDismiss}
-          className="fire-button mt-2"
-          style={{ background: info.colour, color: '#05070c' }}
+          onClick={handleFire}
+          disabled={!selectedAbility || !selectedTarget}
+          className="fire-button"
+          style={{ fontSize: '12px', padding: '10px 0' }}
         >
-          ACKNOWLEDGE & DISMISS
+          ⚡ EXECUTE ABILITY
         </button>
       </div>
     </div>
   );
 }
 
-function ControlSwapBanner({ targetName, remainingSecs }) {
+// ── Station Progress Tracker ──────────────────────────────────────────────
+
+function StationTracker({ completedCount, total }) {
   return (
-    <div className="hud-container flex items-center justify-between px-5 py-2 text-xs font-mono border-x-0 border-t-0 border-b-2 border-b-amber-400 bg-amber-950/95 text-amber-200 shadow-[0_0_25px_rgba(255,183,3,0.5)] animate-pulse">
-      <div className="flex items-center gap-3">
-        <span className="text-xl">🔄</span>
-        <div>
-          <span className="font-black text-white uppercase tracking-wider">CONTROL SWAP ACTIVE!</span>
-          <span className="ml-2 text-amber-300">You are controlling <b className="text-white underline">{targetName}</b>'s avatar!</span>
-        </div>
-      </div>
-      <div className="font-bold text-amber-400 text-sm">
-        REVERT IN: {remainingSecs}S
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+      <span style={{ color: 'var(--amber)', fontWeight: 700, letterSpacing: '1px' }}>
+        SCENES: {completedCount}/{total}
+      </span>
+      <div style={{ width: '80px', height: '6px', background: 'rgba(196, 163, 90, 0.15)', borderRadius: '3px', overflow: 'hidden', border: '1px solid rgba(196, 163, 90, 0.3)' }}>
+        <div style={{ width: `${(completedCount / total) * 100}%`, height: '100%', background: 'var(--amber)', transition: 'width 0.5s ease', boxShadow: '0 0 8px var(--amber-glow)' }} />
       </div>
     </div>
   );
 }
 
-// ── Sabotage Shop Modal with Progress Bars ──────────────────────────────────
+// ── Death Overlay (Individual Talent Elimination Screen) ───────────────────
 
-function SabotageShopModal({ points, players, localPlayerId, onFireSabotage, onClose }) {
-  const [activeTab, setActiveTab] = useState('ALL');
-  const [selectedEffect, setSelectedEffect] = useState(ALL_EFFECTS[0]?.id ?? '');
-
-  const opponents = useMemo(() => players.filter((p) => p.id !== localPlayerId), [players, localPlayerId]);
-  const [selectedTarget, setSelectedTarget] = useState(opponents[0]?.id ?? '');
-
-  useEffect(() => {
-    if (!opponents.some((p) => p.id === selectedTarget) && opponents.length > 0) {
-      setSelectedTarget(opponents[0].id);
-    }
-  }, [opponents, selectedTarget]);
-
-  const categories = ['ALL', 'VISUAL', 'INPUT', 'SOCIAL', 'STRUCTURAL'];
-  const filteredEffects = ALL_EFFECTS.filter(
-    (e) => activeTab === 'ALL' || e.category.toUpperCase() === activeTab
-  );
-
-  const currentEffectObj = ALL_EFFECTS.find((e) => e.id === selectedEffect);
-  const cost = currentEffectObj?.cost ?? 50;
-  const canAfford = points >= cost;
-
-  function fire() {
-    if (!selectedEffect) return;
-    onFireSabotage(selectedEffect, selectedTarget);
-  }
-
+function DeathOverlay({ show, onDismiss }) {
+  if (!show) return null;
   return (
-    <div className="fixed inset-0 z-40 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="hud-container hud-cut-corner max-w-xl w-full p-0 shadow-[0_0_50px_rgba(0,243,255,0.3)] border-cyan-400/60 flex flex-col max-h-[90vh]">
-        <div className="container-header py-3 px-5 flex items-center justify-between">
-          <div className="container-title font-mono text-sm text-cyan-400 flex items-center gap-2">
-            <span className="status-indicator" />
-            ⚡ SABOTAGE CONSOLE & SHOP
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="font-mono text-xs text-amber-400 bg-amber-950/80 border border-amber-400/50 px-3 py-1 font-bold rounded">
-              YOUR BALANCE: {points} PTS
-            </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-white font-mono text-base transition-colors">
-              ✕
-            </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fadeIn" style={{ background: 'rgba(5, 0, 0, 0.92)', backdropFilter: 'blur(10px)' }}>
+      <div className="death-screen-modal max-w-lg w-full p-8 flex flex-col items-center gap-5 text-center">
+        <div style={{ fontSize: '48px', lineHeight: 1 }}>🎬</div>
+        <div className="space-y-2">
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--blood-red-bright)', letterSpacing: '4px', textTransform: 'uppercase' }}>
+            ELIMINATED FROM PRODUCTION
+          </span>
+          <h2 style={{ fontFamily: 'var(--font-head)', fontSize: '36px', color: 'var(--blood-red-bright)', letterSpacing: '4px', textShadow: '0 0 20px var(--blood-glow)' }}>
+            THAT'S A WRAP
+          </h2>
+          <p style={{ fontFamily: 'var(--font-sub)', fontSize: '14px', color: 'var(--text-dim)', lineHeight: '1.6' }}>
+            Your 60s wrap timer expired. Your character was wrapped in film reel and removed from the scene.
+          </p>
+          <div style={{ padding: '8px 14px', background: 'rgba(139, 0, 0, 0.2)', border: '1px solid var(--blood-red)', color: 'var(--amber)', fontFamily: 'var(--font-mono)', fontSize: '11px', marginTop: '12px' }}>
+            📽️ SPECTATOR VISION ACTIVE (BLACK &amp; WHITE 1987 REEL)
           </div>
         </div>
 
-        <div className="p-5 flex flex-col gap-4 overflow-y-auto">
-          {/* Category Tabs */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveTab(cat)}
-                className={`tab-btn text-xs py-1.5 px-3 ${activeTab === cat ? 'active' : ''}`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
-          {/* Sabotage Effect Cards Grid with Progress Meters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
-            {filteredEffects.map((eff) => {
-              const effCost = eff.cost ?? 50;
-              const isSelected = selectedEffect === eff.id;
-              const isAffordable = points >= effCost;
-              const progressPct = Math.min(100, Math.round((points / effCost) * 100));
-
-              return (
-                <div
-                  key={eff.id}
-                  onClick={() => setSelectedEffect(eff.id)}
-                  className={`p-3 border rounded cursor-pointer transition-all flex flex-col justify-between text-xs ${isSelected ? 'bg-cyan-950/50 border-cyan-400 shadow-[0_0_14px_rgba(0,243,255,0.35)] text-white' : 'bg-slate-900/70 border-slate-800 text-slate-300 hover:border-slate-700'}`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between font-bold mb-1">
-                      <span className="truncate text-sm">{eff.name}</span>
-                      <span className={`font-mono text-[10px] px-2 py-0.5 rounded font-bold ${isAffordable ? 'bg-amber-950/80 text-amber-400 border border-amber-400/50' : 'bg-slate-800 text-slate-500'}`}>
-                        {effCost} PTS
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed mb-2">
-                      {eff.description || 'Apply sabotage disruption against opponent.'}
-                    </p>
-                  </div>
-
-                  <div>
-                    {/* Unlock Progress Bar */}
-                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800 my-1">
-                      <div
-                        className={`h-full transition-all duration-300 ${isAffordable ? 'bg-amber-400 shadow-[0_0_8px_#ffb703]' : 'bg-cyan-500/60'}`}
-                        style={{ width: `${progressPct}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
-                      <span className="uppercase">{eff.category}</span>
-                      <span>{points}/{effCost} PTS ({progressPct}%)</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Target Selection */}
-          <div className="flex flex-col gap-2 border-t border-slate-800 pt-3">
-            <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest">
-              SELECT TARGET OPPONENT
-            </span>
-            {opponents.length === 0 ? (
-              <p className="text-xs text-slate-500 italic">No opponents connected — wait for other players to join.</p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {opponents.map((p) => (
-                  <div
-                    key={p.id}
-                    onClick={() => setSelectedTarget(p.id)}
-                    className={`p-2 border rounded transition-all cursor-pointer flex items-center gap-2 text-xs ${selectedTarget === p.id ? 'bg-amber-950/50 border-amber-400 text-white shadow-[0_0_12px_rgba(255,183,3,0.3)]' : 'bg-slate-900/50 border-slate-800 text-slate-400 hover:border-slate-700'}`}
-                  >
-                    <div className={`w-6 h-6 rounded flex items-center justify-center font-head font-bold text-[10px] ${selectedTarget === p.id ? 'bg-amber-400 text-black' : 'bg-slate-800 text-slate-300'}`}>
-                      {p.name?.[0]?.toUpperCase() ?? '?'}
-                    </div>
-                    <span className="font-semibold truncate">{p.name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Fire Sabotage Button */}
-          <button
-            onClick={fire}
-            disabled={!canAfford || !selectedEffect || (selectedEffect !== 'controlSwap' && opponents.length > 0 && !selectedTarget)}
-            className={`fire-button mt-1 py-3.5 text-xs tracking-wider font-extrabold uppercase transition-all ${canAfford ? 'bg-rose-600 text-white shadow-[0_0_24px_rgba(255,0,85,0.5)] hover:brightness-110' : 'bg-slate-800 text-slate-500 cursor-not-allowed border-slate-700'}`}
-          >
-            {canAfford ? `🎯 EXECUTE SABOTAGE (${cost} PTS)` : `❌ NEED ${cost} PTS (HAVE ${points} PTS)`}
-          </button>
-        </div>
+        <button
+          onClick={onDismiss}
+          className="fire-button mt-3"
+          style={{ width: '100%', padding: '12px 0', fontSize: '14px' }}
+        >
+          👁️ ENTER CREW SPECTATOR MODE
+        </button>
       </div>
     </div>
   );
 }
 
-// ── Main Game Component ─────────────────────────────────────────────────────
+// ── End Match Overlay (Victory / Summary Screen) ──────────────────────────
+
+function EndMatchOverlay({ matchOver, players, directorId, onReturnToLobby }) {
+  if (!matchOver || !matchOver.over) return null;
+  const isDirectorWin = matchOver.winner === 'director';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fadeIn" style={{ background: 'rgba(8, 6, 4, 0.95)', backdropFilter: 'blur(12px)' }}>
+      <div className="hud-container hud-cut-corner max-w-xl w-full p-8 flex flex-col items-center gap-6 text-center" style={{ borderColor: isDirectorWin ? 'var(--blood-red)' : 'var(--exit-green)', boxShadow: isDirectorWin ? '0 0 50px var(--blood-glow)' : '0 0 50px var(--exit-glow)' }}>
+        <div className="space-y-2">
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: isDirectorWin ? 'var(--blood-red-bright)' : 'var(--exit-green)', letterSpacing: '3px', textTransform: 'uppercase' }}>
+            {isDirectorWin ? '🎬 PRODUCTION WRAPPED — TALENT LOSS' : '🎭 ESCAPE SUCCESSFUL — TALENT VICTORY'}
+          </span>
+          <h2 style={{ fontFamily: 'var(--font-head)', fontSize: '32px', color: isDirectorWin ? 'var(--blood-red-bright)' : 'var(--amber)', letterSpacing: '4px' }}>
+            {isDirectorWin ? "THE DIRECTOR'S CUT IS COMPLETE" : 'CAST ESCAPED THE LOT!'}
+          </h2>
+          <p style={{ fontFamily: 'var(--font-sub)', fontSize: '14px', color: 'var(--text-dim)' }}>
+            {matchOver.reason}
+          </p>
+        </div>
+
+        {/* Stats Table */}
+        <div className="w-full bg-black/50 border border-amber-900/30 rounded p-4">
+          <table className="w-full text-left" style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid rgba(196, 163, 90, 0.3)', color: 'var(--text-muted)' }}>
+                <th className="pb-2">PLAYER</th>
+                <th className="pb-2">ROLE</th>
+                <th className="pb-2 text-right">OUTCOME</th>
+              </tr>
+            </thead>
+            <tbody>
+              {players.map((p) => {
+                const isDir = p.id === directorId;
+                const status = matchOver.stats?.statuses?.[p.id] || (isDir ? 'director' : 'unknown');
+
+                let badgeColor = 'var(--text-dim)';
+                let badgeText = status.toUpperCase();
+
+                if (isDir) {
+                  badgeColor = 'var(--blood-red-bright)';
+                  badgeText = isDirectorWin ? 'VICTORIOUS' : 'CUT SHORT';
+                } else if (status === 'escaped') {
+                  badgeColor = 'var(--exit-green)';
+                  badgeText = 'ESCAPED';
+                } else if (status === 'wrapped') {
+                  badgeColor = 'var(--blood-red-bright)';
+                  badgeText = 'WRAPPED (DEAD)';
+                } else if (status === 'downed' || status === 'on-mark' || status === 'carried') {
+                  badgeColor = 'var(--amber)';
+                  badgeText = 'CAPTURED';
+                } else if (status === 'alive') {
+                  badgeColor = 'var(--amber)';
+                  badgeText = 'SURVIVED';
+                }
+
+                return (
+                  <tr key={p.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td className="py-2.5 font-bold" style={{ color: 'var(--text-main)' }}>{p.name}</td>
+                    <td className="py-2.5" style={{ color: isDir ? 'var(--blood-red-bright)' : 'var(--amber)' }}>
+                      {isDir ? '🎬 DIRECTOR' : '🎭 TALENT'}
+                    </td>
+                    <td className="py-2.5 text-right font-bold" style={{ color: badgeColor }}>
+                      {badgeText}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <button
+          onClick={onReturnToLobby}
+          className={isDirectorWin ? 'fire-button' : 'btn-green'}
+          style={{ width: '100%', padding: '14px 0', fontSize: '16px' }}
+        >
+          📋 RETURN TO CALL SHEET
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════ MAIN GAME COMPONENT ══════════════════════════════════
 
 export default function Game({
   peer,
@@ -272,140 +342,337 @@ export default function Game({
   playerName,
   isHost,
   players,
+  directorId,
   conn,
   broadcast,
   onMessage,
 }) {
+  const isDirector = playerId === directorId;
+  const role = isDirector ? 'director' : 'talent';
+  const talents = useMemo(() => players.filter((p) => p.id !== directorId), [players, directorId]);
+
+  // ── Game Phase State ────────────────────────────────────────────────────
+  const [phase, setPhase] = useState('pre-production');
+  const [preProductionTimer, setPreProductionTimer] = useState(15);
+  const [paMessage, setPaMessage] = useState('"Quiet on set."');
+  const [stationsCompleted, setStationsCompleted] = useState(0);
+  const [completedStationIds, setCompletedStationIds] = useState(new Set());
+
+  // ── Station & Interaction State ─────────────────────────────────────────
   const [activeStationId, setActiveStationId] = useState(null);
   const stationElRef = useRef(null);
-
-  const [scores, setScores] = useState(() => {
-    const init = {};
-    players.forEach((p) => { init[p.id] = 0; });
-    return init;
-  });
-  const scoresRef = useRef(scores);
-  useEffect(() => { scoresRef.current = scores; }, [scores]);
-
-  useEffect(() => {
-    setScores((prev) => {
-      const updated = { ...prev };
-      players.forEach((p) => {
-        if (updated[p.id] === undefined) updated[p.id] = 0;
-      });
-      return updated;
-    });
-  }, [players]);
-
-  const [toast, setToast] = useState(null);
-  const [floatingPopups, setFloatingPopups] = useState([]);
-  const [counterPunch, setCounterPunch] = useState(false);
-  const [screenShake, setScreenShake] = useState(false);
-  const [preSabotageTell, setPreSabotageTell] = useState(false);
-  const [terminalFlash, setTerminalFlash] = useState(false);
-
-  // Holding E Charge-Up state
   const [interactProgress, setInteractProgress] = useState(0);
   const [isInteracting, setIsInteracting] = useState(false);
   const interactTimerRef = useRef(null);
   const eKeyDownRef = useRef(false);
+
+  // ── Player & Mark State ─────────────────────────────────────────────────
+  const [playerStatuses, setPlayerStatuses] = useState(() => {
+    const init = {};
+    players.forEach((p) => { init[p.id] = p.id === directorId ? 'director' : 'alive'; });
+    return init;
+  });
+  const [carriedTalentId, setCarriedTalentId] = useState(null);
+  const [markOccupants, setMarkOccupants] = useState({}); // markId -> { talentId, remainingSecs }
+  const [openExitGates, setOpenExitGates] = useState(new Set());
+  const [escapedCount, setEscapedCount] = useState(0);
+  const [matchOver, setMatchOver] = useState({ over: false, winner: null, reason: '', stats: null });
+
+  // ── UI & FX State ───────────────────────────────────────────────────────
+  const [showAbilityPanel, setShowAbilityPanel] = useState(isDirector);
+  const [toast, setToast] = useState(null);
+  const [screenShake, setScreenShake] = useState(false);
+  const [terrorIntensity, setTerrorIntensity] = useState(0);
+  const [terminalFlash, setTerminalFlash] = useState(false);
+  const [chaseTarget, setChaseTarget] = useState(null);
 
   function showToast(msg, duration = 3000) {
     setToast(msg);
     setTimeout(() => setToast(null), duration);
   }
 
-  function addFloatingPopup(text, x = window.innerWidth / 2, y = window.innerHeight / 2) {
-    const id = Date.now() + Math.random();
-    setFloatingPopups((prev) => [...prev, { id, text, x, y }]);
-    setTimeout(() => {
-      setFloatingPopups((prev) => prev.filter((p) => p.id !== id));
-    }, 700);
-  }
-
-  function triggerCounterPunch() {
-    setCounterPunch(true);
-    setTimeout(() => setCounterPunch(false), 300);
-  }
-
-  function triggerSabotageHit() {
-    setScreenShake(true);
-    setTimeout(() => setScreenShake(false), 250);
-  }
-
-  function triggerPreSabotageTell() {
-    setPreSabotageTell(true);
-    setTimeout(() => setPreSabotageTell(false), 450);
-  }
-
-  const [showSabotageShop, setShowSabotageShop] = useState(false);
-  const [showRoster, setShowRoster] = useState(false);
-  const [blackout, setBlackout] = useState(false);
-  const [crisis, setCrisis] = useState(null);
-
-  const [controlTargetId, setControlTargetId] = useState(null);
-  const [controlSwapInfo, setControlSwapInfo] = useState(null);
-  const controlSwapTimerRef = useRef(null);
-
-  // Close station terminal on ESC key
-  useEffect(() => {
-    function handleKeyDown(e) {
-      if (e.key === 'Escape' && activeStationId) {
-        setActiveStationId(null);
-      }
+  function showPA(msg, duration = 4000) {
+    setPaMessage(msg);
+    if (isHost && broadcast) {
+      broadcast({ type: 'pa-announcement', payload: { message: msg } });
     }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeStationId]);
+    setTimeout(() => setPaMessage(null), duration);
+  }
 
-  const { localPos, allPositions, facingAngle, setBroadcast, receiveGuestMove } = usePlayerMovement({
+  // ── Spawn Points ────────────────────────────────────────────────────────
+  const mySpawnPoint = useMemo(() => {
+    if (isDirector) {
+      const booth = layout.rooms.find((r) => r.isDirectorBooth);
+      if (booth) return { x: (booth.bounds.x1 + booth.bounds.x2) / 2, y: (booth.bounds.y1 + booth.bounds.y2) / 2 };
+      return layout.spawnPoint;
+    }
+    const talentIndex = talents.findIndex((t) => t.id === playerId);
+    const spawnPoints = layout.talentSpawnPoints || [layout.spawnPoint];
+    return spawnPoints[talentIndex % spawnPoints.length] || layout.spawnPoint;
+  }, [isDirector, playerId, talents]);
+
+  // ── Movement Hook ───────────────────────────────────────────────────────
+  const myStatus = playerStatuses[playerId] || 'alive';
+
+  const { localPos, allPositions, facingAngle, isCrouching, crouchStates, setBroadcast, receiveGuestMove } = usePlayerMovement({
     playerId,
-    controlTargetId,
+    role,
     isHost,
     conn,
-    initialPos: layout.spawnPoint,
+    initialPos: mySpawnPoint,
     walkableRects: WALKABLE_RECTS,
+    playerStatus: myStatus === 'director' ? 'alive' : myStatus,
   });
 
   useEffect(() => {
     if (isHost && broadcast) setBroadcast(broadcast);
   }, [isHost, broadcast, setBroadcast]);
 
-  const { nearbyRoom } = useTaskZoneTrigger({
+  // Proximity zone trigger
+  const { nearbyRoom, nearbyMark, nearbyGate, nearbyTargetPlayer } = useTaskZoneTrigger({
     localPos,
     rooms: layout.rooms,
-    onEnterRoom: useCallback((roomId, stationId) => {
-      // Optional auto enter
-    }, []),
+    marks: layout.chalkMarks,
+    gates: layout.exitGates,
+    allPositions,
+    playerStatuses,
+    localPlayerId: playerId,
+    isDirector,
   });
 
-  // ── Interact Charge-Up Hold Loop (0.5s) ──────────────────────────────────
+  // Keep carried Talent locked to Director position
   useEffect(() => {
+    if (isDirector && carriedTalentId && allPositions[playerId]) {
+      const dirPos = allPositions[playerId];
+      if (isHost && broadcast) {
+        receiveGuestMove(carriedTalentId, { x: dirPos.x + 10, y: dirPos.y });
+      }
+    }
+  }, [isDirector, carriedTalentId, allPositions, playerId, isHost, broadcast, receiveGuestMove]);
+
+  // ── Pre-Production Countdown ────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'pre-production') return;
+
+    const interval = setInterval(() => {
+      setPreProductionTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setPhase('rolling');
+          showPA('"And... rolling!"', 3000);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [phase]);
+
+  // ── 60-Second Mark Wrap Timer Ticker (Host only) ────────────────────────
+  useEffect(() => {
+    if (!isHost || matchOver.over) return;
+
+    const interval = setInterval(() => {
+      setMarkOccupants((prevMarks) => {
+        let updatedMarks = { ...prevMarks };
+        let stateChanged = false;
+        let nextStatuses = { ...playerStatuses };
+
+        Object.entries(prevMarks).forEach(([markId, markData]) => {
+          if (!markData || !markData.talentId) return;
+          const nextSecs = markData.remainingSecs - 1;
+
+          if (nextSecs <= 0) {
+            // Talent is WRAPPED (DEAD)
+            stateChanged = true;
+            delete updatedMarks[markId];
+            nextStatuses[markData.talentId] = 'wrapped';
+
+            const deadTalentName = players.find((p) => p.id === markData.talentId)?.name || 'Talent';
+            showPA(`"That's a wrap on ${deadTalentName}!"`, 4000);
+          } else {
+            updatedMarks[markId] = { ...markData, remainingSecs: nextSecs };
+          }
+        });
+
+        if (stateChanged) {
+          setPlayerStatuses(nextStatuses);
+          if (broadcast) {
+            broadcast({ type: 'talent-status-update', payload: { statuses: nextStatuses, markOccupants: updatedMarks } });
+          }
+        } else if (broadcast && Object.keys(updatedMarks).length > 0) {
+          broadcast({ type: 'mark-timer-tick', payload: { markOccupants: updatedMarks } });
+        }
+
+        return updatedMarks;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isHost, matchOver.over, playerStatuses, players, broadcast]);
+
+  // ── Check Win / Loss Conditions (Host only) ─────────────────────────────
+  useEffect(() => {
+    if (!isHost || matchOver.over || phase === 'pre-production') return;
+
+    const nonDirectorPlayers = players.filter((p) => p.id !== directorId);
+    const totalTalent = nonDirectorPlayers.length;
+
+    let wrappedCount = 0;
+    let escapedTotal = 0;
+    let aliveOrDownedCount = 0;
+
+    nonDirectorPlayers.forEach((p) => {
+      const st = playerStatuses[p.id];
+      if (st === 'wrapped') wrappedCount++;
+      if (st === 'escaped') escapedTotal++;
+      if (st === 'alive' || st === 'downed' || st === 'on-mark' || st === 'carried') aliveOrDownedCount++;
+    });
+
+    // 1. Director Win: All Talent are wrapped (dead) or no Talent left alive to rescue
+    if (wrappedCount >= totalTalent || (wrappedCount + (carriedTalentId ? 1 : 0) >= totalTalent)) {
+      triggerMatchOver('director', 'All Talent have been wrapped in film reel. Film production complete!');
+      return;
+    }
+
+    // If all non-escaped Talent are wrapped
+    if (wrappedCount + escapedTotal >= totalTalent && escapedTotal === 0) {
+      triggerMatchOver('director', 'The Director eliminated the entire cast before anyone could escape.');
+      return;
+    }
+
+    // 2. Talent Win: At least 1 Talent escaped and all active players resolved
+    if (escapedTotal > 0 && (wrappedCount + escapedTotal >= totalTalent)) {
+      triggerMatchOver('talent', `${escapedTotal} Talent escaped the lot! Production canceled.`);
+      return;
+    }
+  }, [isHost, matchOver.over, phase, playerStatuses, players, directorId, carriedTalentId]);
+
+  function triggerMatchOver(winner, reason) {
+    const stats = { statuses: playerStatuses, stationsCompleted, escapedCount };
+    setMatchOver({ over: true, winner, reason, stats });
+    if (isHost && broadcast) {
+      broadcast({ type: 'match-over', payload: { winner, reason, stats } });
+    }
+  }
+
+  // ── Interact Charge-Up Handler (Hold E) ─────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'rolling' && phase !== 'wrap-up') return;
+
     function onKeyDown(e) {
-      if ((e.key === 'e' || e.key === 'E') && nearbyRoom?.stationId && !activeStationId && !eKeyDownRef.current) {
-        eKeyDownRef.current = true;
-        setIsInteracting(true);
+      if ((e.key !== 'e' && e.key !== 'E') || eKeyDownRef.current) return;
 
-        const startTime = Date.now();
-        const duration = 450; // 450ms hold
+      // 1. Director Actions
+      if (isDirector) {
+        // A. Pick up downed Talent
+        if (nearbyTargetPlayer && nearbyTargetPlayer.action === 'pickup' && !carriedTalentId) {
+          eKeyDownRef.current = true;
+          const targetId = nearbyTargetPlayer.id;
+          setCarriedTalentId(targetId);
+          setPlayerStatuses((prev) => {
+            const next = { ...prev, [targetId]: 'carried' };
+            if (isHost && broadcast) broadcast({ type: 'talent-status-update', payload: { statuses: next } });
+            return next;
+          });
+          showToast(`📦 Picked up ${players.find((p) => p.id === targetId)?.name}`);
+          setTimeout(() => { eKeyDownRef.current = false; }, 300);
+          return;
+        }
 
-        if (interactTimerRef.current) clearInterval(interactTimerRef.current);
-        interactTimerRef.current = setInterval(() => {
-          const elapsed = Date.now() - startTime;
-          const pct = Math.min(1.0, elapsed / duration);
-          setInteractProgress(pct);
+        // B. Mount carried Talent on Mark
+        if (nearbyMark && carriedTalentId) {
+          eKeyDownRef.current = true;
+          const targetId = carriedTalentId;
+          const markId = nearbyMark.id;
 
-          if (pct >= 1.0) {
-            clearInterval(interactTimerRef.current);
-            eKeyDownRef.current = false;
-            setIsInteracting(false);
-            setInteractProgress(0);
+          setMarkOccupants((prev) => ({ ...prev, [markId]: { talentId: targetId, remainingSecs: WRAP_TIMER_DURATION } }));
+          setCarriedTalentId(null);
+          setPlayerStatuses((prev) => {
+            const next = { ...prev, [targetId]: 'on-mark' };
+            if (isHost && broadcast) broadcast({ type: 'talent-status-update', payload: { statuses: next } });
+            return next;
+          });
+          showToast(`⛓️ Bound ${players.find((p) => p.id === targetId)?.name} to ${nearbyMark.label}!`);
+          setTimeout(() => { eKeyDownRef.current = false; }, 300);
+          return;
+        }
+      }
+
+      // 2. Talent Actions
+      if (!isDirector) {
+        // A. Station interaction
+        if (nearbyRoom?.stationId && !activeStationId && !completedStationIds.has(nearbyRoom.stationId)) {
+          startHoldAction(450, () => {
             setActiveStationId(nearbyRoom.stationId);
             setTerminalFlash(true);
             setTimeout(() => setTerminalFlash(false), 350);
-          }
-        }, 30);
+          });
+          return;
+        }
+
+        // B. Revive downed teammate or Rescue from Mark
+        if (nearbyTargetPlayer && (nearbyTargetPlayer.action === 'revive' || nearbyTargetPlayer.action === 'rescue')) {
+          const targetId = nearbyTargetPlayer.id;
+          const targetName = players.find((p) => p.id === targetId)?.name;
+          const actionText = nearbyTargetPlayer.action === 'revive' ? 'Reviving' : 'Rescuing';
+
+          startHoldAction(HOLD_ACTION_DURATION, () => {
+            setPlayerStatuses((prev) => {
+              const next = { ...prev, [targetId]: 'alive' };
+              if (isHost && broadcast) broadcast({ type: 'talent-status-update', payload: { statuses: next } });
+              else if (conn) sendMessage(conn, 'talent-action', { action: 'rescue', targetId });
+              return next;
+            });
+
+            if (nearbyTargetPlayer.action === 'rescue') {
+              setMarkOccupants((prev) => {
+                const next = { ...prev };
+                Object.keys(next).forEach((mId) => {
+                  if (next[mId]?.talentId === targetId) delete next[mId];
+                });
+                return next;
+              });
+            }
+
+            showToast(`❤️ Rescued ${targetName}!`);
+          });
+          return;
+        }
+
+        // C. Open Exit Gate (during Wrap-Up)
+        if (phase === 'wrap-up' && nearbyGate && !openExitGates.has(nearbyGate.id)) {
+          startHoldAction(GATE_HOLD_DURATION, () => {
+            setOpenExitGates((prev) => new Set([...prev, nearbyGate.id]));
+            showPA(`🚪 ${nearbyGate.label} HAS BEEN POWERED OPEN!`, 5000);
+            if (isHost && broadcast) broadcast({ type: 'gate-open', payload: { gateId: nearbyGate.id } });
+            else if (conn) sendMessage(conn, 'gate-open', { gateId: nearbyGate.id });
+          });
+          return;
+        }
       }
+    }
+
+    function startHoldAction(duration, onComplete) {
+      eKeyDownRef.current = true;
+      setIsInteracting(true);
+      const startTime = Date.now();
+
+      if (interactTimerRef.current) clearInterval(interactTimerRef.current);
+      interactTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const pct = Math.min(1.0, elapsed / duration);
+        setInteractProgress(pct);
+
+        if (pct >= 1.0) {
+          clearInterval(interactTimerRef.current);
+          eKeyDownRef.current = false;
+          setIsInteracting(false);
+          setInteractProgress(0);
+          onComplete();
+        }
+      }, 30);
     }
 
     function onKeyUp(e) {
@@ -424,413 +691,490 @@ export default function Game({
       window.removeEventListener('keyup', onKeyUp);
       if (interactTimerRef.current) clearInterval(interactTimerRef.current);
     };
-  }, [nearbyRoom, activeStationId]);
+  }, [phase, isDirector, nearbyRoom, nearbyMark, nearbyGate, nearbyTargetPlayer, activeStationId, completedStationIds, carriedTalentId, openExitGates, isHost, broadcast, conn, players]);
 
+  // ── Exit Gate Escape Trigger (Talent walking into open gate) ────────────
+  useEffect(() => {
+    if (isDirector || phase !== 'wrap-up' || myStatus !== 'alive') return;
+
+    if (nearbyGate && openExitGates.has(nearbyGate.id)) {
+      setPlayerStatuses((prev) => {
+        const next = { ...prev, [playerId]: 'escaped' };
+        setEscapedCount((c) => c + 1);
+        showToast('🏃 YOU ESCAPED THE LOT!');
+        showPA(`🎭 ${playerName} HAS ESCAPED!`, 4000);
+
+        if (isHost && broadcast) {
+          broadcast({ type: 'talent-status-update', payload: { statuses: next } });
+        } else if (conn) {
+          sendMessage(conn, 'talent-action', { action: 'escape', targetId: playerId });
+        }
+        return next;
+      });
+    }
+  }, [isDirector, phase, myStatus, nearbyGate, openExitGates, playerId, playerName, isHost, broadcast, conn]);
+
+  // Close station on ESC
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === 'Escape' && activeStationId) setActiveStationId(null);
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeStationId]);
+
+  // ── Terror Radius ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isDirector || phase !== 'rolling') {
+      setTerrorIntensity(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const dirPos = allPositions[directorId];
+      const myPos = allPositions[playerId];
+      if (!dirPos || !myPos) { setTerrorIntensity(0); return; }
+
+      const dx = dirPos.x - myPos.x;
+      const dy = dirPos.y - myPos.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < TERROR_RADIUS) {
+        setTerrorIntensity(1 - (dist / TERROR_RADIUS));
+      } else {
+        setTerrorIntensity(0);
+      }
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, [isDirector, phase, allPositions, directorId, playerId]);
+
+  // ── Director Ability System ─────────────────────────────────────────────
   const stageRef = useRef(null);
   const hostActiveEffects = useRef(new Map());
+  const getTargetEl = useCallback(() => stationElRef.current || stageRef.current || document.body, []);
 
-  const getTargetEl = useCallback(
-    () => stationElRef.current || stageRef.current || document.body,
-    []
-  );
-
-  const handleControlSwapEvent = useCallback(
-    ({ playerAId, playerBId, playerAName, playerBName, durationMs }) => {
-      let targetId = null;
-      let targetName = null;
-
-      if (playerId === playerAId) {
-        targetId = playerBId;
-        targetName = playerBName;
-      } else if (playerId === playerBId) {
-        targetId = playerAId;
-        targetName = playerAName;
-      }
-
-      if (targetId) {
-        setControlTargetId(targetId);
-        triggerSabotageHit();
-        showToast(`🔄 CONTROL SWAP! You are controlling ${targetName}!`, 4000);
-
-        let remaining = Math.ceil(durationMs / 1000);
-        setControlSwapInfo({ targetName, remainingSecs: remaining });
-
-        if (controlSwapTimerRef.current) clearInterval(controlSwapTimerRef.current);
-        controlSwapTimerRef.current = setInterval(() => {
-          remaining -= 1;
-          if (remaining <= 0) {
-            clearInterval(controlSwapTimerRef.current);
-            setControlTargetId(null);
-            setControlSwapInfo(null);
-            showToast('🔄 Control Swap ended. Controls restored to normal.');
-          } else {
-            setControlSwapInfo({ targetName, remainingSecs: remaining });
-          }
-        }, 1000);
-      } else {
-        showToast(`⚡ Control Swap activated between ${playerAName} and ${playerBName}!`);
-      }
-    },
-    [playerId]
-  );
-
-  const sabotageCallbacks = useMemo(
-    () => ({
-      onControlSwap: handleControlSwapEvent,
-      onCrisis: (type) => {
-        setCrisis(type);
-        triggerSabotageHit();
-        if (type === 'power-outage') {
-          setBlackout(true);
-          setTimeout(() => setBlackout(false), 8000);
-        }
-      },
-      onSabotageApplied: (payload) => {
-        if (payload?.targetPlayerId === playerId) {
-          triggerPreSabotageTell();
-          setTimeout(() => triggerSabotageHit(), 450);
-          showToast(`⚠️ Sabotage applied to you by ${payload.buyerName || 'an opponent'}!`);
-        }
-      },
-    }),
-    [handleControlSwapEvent, playerId]
-  );
-
-  const sabotageBroadcasterRef = useRef(null);
+  const directorBroadcasterRef = useRef(null);
   useEffect(() => {
     if (isHost && broadcast) {
-      sabotageBroadcasterRef.current = createSabotageBroadcaster(
+      directorBroadcasterRef.current = createDirectorBroadcaster(
         broadcast,
-        () => scoresRef.current,
-        setScores,
-        players,
         (payload) => {
           if (payload.targetPlayerId === playerId) {
-            triggerPreSabotageTell();
-            setTimeout(() => triggerSabotageHit(), 450);
-            showToast(`⚠️ Sabotage applied to you by ${payload.buyerName || 'an opponent'}!`);
-            applySabotageEffectLocally(payload, getTargetEl, hostActiveEffects.current, sabotageCallbacks);
+            applyAbilityLocally(payload, getTargetEl, hostActiveEffects.current, {});
           }
-        },
-        handleControlSwapEvent
+        }
       );
     }
-  }, [isHost, broadcast, players, playerId, getTargetEl, sabotageCallbacks, handleControlSwapEvent]);
+  }, [isHost, broadcast, playerId, getTargetEl]);
 
-  useSabotageReceiver(isHost ? null : conn, playerId, getTargetEl, sabotageCallbacks);
+  const abilityCallbacks = useMemo(() => ({
+    onAbilityApplied: (payload) => {
+      if (payload?.targetPlayerId === playerId) {
+        setScreenShake(true);
+        setTimeout(() => setScreenShake(false), 250);
+        showToast(`⚠️ The Director used ${payload.effectId} on you!`);
+      }
+    },
+    onBleedThrough: () => {
+      showToast('▒▒ BLEED-THROUGH — Reality is shifting... ▒▒', 5000);
+    },
+  }), [playerId]);
 
-  // Network messages (Host side)
+  useAbilityReceiver(isHost ? null : conn, playerId, getTargetEl, abilityCallbacks);
+
+  // ── Host Message Handlers ───────────────────────────────────────────────
   useEffect(() => {
     if (!isHost || !onMessage) return;
 
     onMessage('player-move', (conn, payload) => {
       const canonicalSenderId = players.find((p) => p.peerId === conn.peer)?.id;
       if (!canonicalSenderId) return;
-
-      const targetId = payload?.targetId || canonicalSenderId;
       const pos = payload?.pos || payload;
       if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
-        receiveGuestMove(targetId, pos);
+        receiveGuestMove(canonicalSenderId, pos, payload?.crouching);
       }
     });
 
     onMessage('task-complete', (conn, payload) => {
       const canonicalId = payload?.playerId || players.find((p) => p.peerId === conn.peer)?.id;
-      const pts = payload?.pts || 100;
-      if (canonicalId) {
-        setScores((prev) => {
-          const updated = { ...prev, [canonicalId]: (prev[canonicalId] ?? 0) + pts };
-          broadcast?.({ type: 'score-update', payload: { scores: updated } });
-          return updated;
+      const stationId = payload?.stationId;
+      if (canonicalId && stationId) handleStationCompleted(stationId, canonicalId);
+    });
+
+    onMessage('talent-action', (conn, payload) => {
+      if (payload.action === 'rescue') {
+        setPlayerStatuses((prev) => {
+          const next = { ...prev, [payload.targetId]: 'alive' };
+          if (broadcast) broadcast({ type: 'talent-status-update', payload: { statuses: next } });
+          return next;
+        });
+        setMarkOccupants((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((mId) => {
+            if (next[mId]?.talentId === payload.targetId) delete next[mId];
+          });
+          return next;
+        });
+      }
+      if (payload.action === 'escape') {
+        setPlayerStatuses((prev) => {
+          const next = { ...prev, [payload.targetId]: 'escaped' };
+          setEscapedCount((c) => c + 1);
+          if (broadcast) broadcast({ type: 'talent-status-update', payload: { statuses: next } });
+          return next;
         });
       }
     });
 
-    onMessage('buy-sabotage', (conn, payload) => {
-      const buyerId = players.find((p) => p.peerId === conn.peer)?.id;
-      if (buyerId && sabotageBroadcasterRef.current) {
-        sabotageBroadcasterRef.current.fireSabotage(
-          buyerId,
-          payload.effectId,
-          payload.targetPlayerId,
-          payload.stationId
-        );
-      }
+    onMessage('gate-open', (conn, payload) => {
+      setOpenExitGates((prev) => new Set([...prev, payload.gateId]));
+      if (broadcast) broadcast({ type: 'gate-open', payload });
     });
   }, [isHost, onMessage, players, receiveGuestMove, broadcast]);
 
-  // Network messages (Guest side)
+  // Guest message handlers
   useEffect(() => {
     if (isHost || !conn) return;
 
     function handleData(raw) {
       let msg;
-      try {
-        msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      } catch {
-        return;
-      }
+      try { msg = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return; }
 
-      if (msg.type === 'score-update') {
-        if (msg.payload?.scores) {
-          setScores(msg.payload.scores);
-        }
+      if (msg.type === 'phase-change') setPhase(msg.payload?.phase || 'rolling');
+      if (msg.type === 'pa-announcement') { setPaMessage(msg.payload?.message); setTimeout(() => setPaMessage(null), 4000); }
+      if (msg.type === 'station-complete') {
+        setStationsCompleted(msg.payload?.completedCount ?? 0);
+        if (msg.payload?.stationId) setCompletedStationIds((prev) => new Set([...prev, msg.payload.stationId]));
+        if (msg.payload?.completedCount >= layout.stationsRequired) setPhase('wrap-up');
       }
-      if (msg.type === 'control-swap') {
-        handleControlSwapEvent(msg.payload);
+      if (msg.type === 'talent-status-update') {
+        if (msg.payload?.statuses) setPlayerStatuses(msg.payload.statuses);
+        if (msg.payload?.markOccupants) setMarkOccupants(msg.payload.markOccupants);
+      }
+      if (msg.type === 'mark-timer-tick') {
+        if (msg.payload?.markOccupants) setMarkOccupants(msg.payload.markOccupants);
+      }
+      if (msg.type === 'gate-open') {
+        setOpenExitGates((prev) => new Set([...prev, msg.payload.gateId]));
+      }
+      if (msg.type === 'match-over') {
+        setMatchOver(msg.payload);
       }
     }
 
     conn.on('data', handleData);
     return () => conn.off('data', handleData);
-  }, [isHost, conn, handleControlSwapEvent]);
+  }, [isHost, conn]);
 
-  function handleTaskSolve(pts = 100) {
-    const isCritical = Math.random() < 0.15;
-    const ptsAwarded = isCritical ? 150 : pts;
+  // ── Station Completion Handler ──────────────────────────────────────────
+  function handleStationCompleted(stationId, completerId) {
+    setCompletedStationIds((prev) => {
+      if (prev.has(stationId)) return prev;
+      const updated = new Set([...prev, stationId]);
+      const newCount = updated.size;
+      setStationsCompleted(newCount);
 
-    if (isCritical) {
-      showToast('⚡ CRITICAL TASK COMPLETION! +150 PTS BONUS!');
-      addFloatingPopup('⚡ +150 PTS CRITICAL!');
-    } else {
-      showToast(`🎯 TASK COMPLETED! +${ptsAwarded} POINTS AWARDED!`);
-      addFloatingPopup(`+${ptsAwarded} PTS`);
-    }
+      const completerName = players.find((p) => p.id === completerId)?.name || 'Someone';
+      showPA(`"Cut — print it!" Scene completed by ${completerName}.`, 4000);
 
-    triggerCounterPunch();
+      if (isHost && broadcast) {
+        broadcast({ type: 'station-complete', payload: { stationId, completedCount: newCount, completerId } });
+      }
+
+      if (newCount >= layout.stationsRequired) {
+        setPhase('wrap-up');
+        showPA('"That\'s enough takes. Exit doors are powered."', 5000);
+        if (isHost && broadcast) {
+          broadcast({ type: 'phase-change', payload: { phase: 'wrap-up' } });
+        }
+      }
+      return updated;
+    });
+  }
+
+  function handleTaskSolve() {
+    showToast('🎬 SCENE COMPLETED!');
     setTerminalFlash(true);
     setTimeout(() => setTerminalFlash(false), 350);
 
-    setScores((prev) => {
-      const current = prev[playerId] ?? 0;
-      const updated = { ...prev, [playerId]: current + ptsAwarded };
+    const stationId = activeStationId;
+    if (isHost) handleStationCompleted(stationId, playerId);
+    else if (conn) sendMessage(conn, 'task-complete', { playerId, stationId });
 
-      if (isHost && broadcast) {
-        broadcast({ type: 'score-update', payload: { scores: updated } });
-      } else if (conn) {
-        sendMessage(conn, 'task-complete', { playerId, pts: ptsAwarded, stationId: activeStationId });
-      }
-
-      return updated;
-    });
-
-    setTimeout(() => {
-      setActiveStationId(null);
-    }, 1200);
+    setTimeout(() => setActiveStationId(null), 1200);
   }
 
-  function handleFireSabotage(effectId, targetPlayerId) {
-    if (isHost && sabotageBroadcasterRef.current) {
-      const ok = sabotageBroadcasterRef.current.fireSabotage(
-        playerId,
-        effectId,
-        targetPlayerId,
-        activeStationId || 'any'
-      );
-      if (ok) {
-        showToast('🎯 Sabotage executed successfully!');
-        setShowSabotageShop(false);
-      } else {
-        showToast('❌ Not enough points!');
-      }
-    } else if (!isHost && conn) {
-      const effObj = ALL_EFFECTS.find((e) => e.id === effectId);
-      const cost = effObj?.cost ?? 50;
-      if ((scores[playerId] ?? 0) < cost) {
-        showToast('❌ Not enough points!');
-        return;
-      }
-
-      sendMessage(conn, 'buy-sabotage', {
-        buyerId: playerId,
-        effectId,
-        targetPlayerId,
-        stationId: activeStationId || 'any',
-      });
-      showToast('🎯 Sabotage request sent!');
-      setShowSabotageShop(false);
+  // ── Director Ability Firing ─────────────────────────────────────────────
+  function handleUseAbility(effectId, targetPlayerId) {
+    if (!isDirector) return;
+    if (isHost && directorBroadcasterRef.current) {
+      const result = directorBroadcasterRef.current.useAbility(playerId, effectId, targetPlayerId);
+      if (result.ok) showToast(`⚡ Ability executed: ${effectId}`);
+      else showToast(`❌ ${result.reason}`);
     }
   }
 
+  // ── Chase & Attack Detection (Director side, host) ──────────────────────
+  useEffect(() => {
+    if (!isDirector || !isHost || phase !== 'rolling') return;
+
+    const interval = setInterval(() => {
+      const dirPos = allPositions[directorId];
+      if (!dirPos) return;
+
+      for (const t of talents) {
+        if (playerStatuses[t.id] !== 'alive') continue;
+        const tPos = allPositions[t.id];
+        if (!tPos) continue;
+
+        const dx = dirPos.x - tPos.x;
+        const dy = dirPos.y - tPos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < CHASE_RANGE) {
+          setChaseTarget(t.id);
+          showPA(`"And... action!" ${t.name} DOWNED!`, 3000);
+
+          setPlayerStatuses((prev) => {
+            const next = { ...prev, [t.id]: 'downed' };
+            if (broadcast) broadcast({ type: 'talent-status-update', payload: { statuses: next } });
+            return next;
+          });
+          break;
+        }
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isDirector, isHost, phase, allPositions, directorId, talents, playerStatuses, broadcast]);
+
+  // ── Death & Spectator State ──────────────────────────────────────────────
+  const isDead = myStatus === 'wrapped' || myStatus === 'crew';
+  const [showDeathModal, setShowDeathModal] = useState(false);
+  const prevStatusRef = useRef(myStatus);
+
+  useEffect(() => {
+    if (!isDirector && (myStatus === 'wrapped' || myStatus === 'crew') && prevStatusRef.current !== 'wrapped' && prevStatusRef.current !== 'crew') {
+      setShowDeathModal(true);
+    }
+    prevStatusRef.current = myStatus;
+  }, [myStatus, isDirector]);
+
+  // ── Render ──────────────────────────────────────────────────────────────
   const StationComp = activeStationId ? STATION_COMPONENTS[activeStationId] : null;
-  const myPoints = scores[playerId] ?? 0;
 
   return (
-    <div className="h-screen max-h-screen overflow-hidden flex flex-col items-center justify-center p-2 sm:p-4 bg-bg-void relative z-10">
-      {/* Toast Notification Banner */}
+    <div className={`h-screen max-h-screen overflow-hidden flex flex-col items-center justify-center p-2 sm:p-4 relative z-10 ${isDead ? 'dead-spectator-filter' : ''}`} style={{ background: 'var(--bg-void)' }}>
+      {/* Death Modal for Eliminated Talent */}
+      <DeathOverlay
+        show={showDeathModal}
+        onDismiss={() => setShowDeathModal(false)}
+      />
+
+      {/* End Match Overlay */}
+      <EndMatchOverlay
+        matchOver={matchOver}
+        players={players}
+        directorId={directorId}
+        onReturnToLobby={() => window.location.reload()}
+      />
+
+      {/* Toast */}
       {toast && (
-        <div className="fixed top-4 z-50 bg-slate-900 border-2 border-cyan-400 text-cyan-300 px-5 py-2.5 font-mono text-xs font-bold rounded shadow-[0_0_25px_rgba(0,243,255,0.5)] animate-bounce">
+        <div className="fixed top-4 z-50 animate-fadeIn" style={{ background: 'rgba(14, 10, 8, 0.95)', border: '2px solid var(--blood-red)', color: 'var(--amber)', padding: '10px 20px', fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 700, boxShadow: '0 0 25px var(--blood-glow)' }}>
           {toast}
         </div>
       )}
 
-      {/* Floating Points Popups Layer */}
-      {floatingPopups.map((popup) => (
-        <div
-          key={popup.id}
-          className="float-pts-popup"
-          style={{ left: popup.x, top: popup.y }}
-        >
-          {popup.text}
-        </div>
-      ))}
+      {/* Terror Radius Vignette (Talent only) */}
+      {!isDirector && terrorIntensity > 0 && !isDead && (
+        <div className="terror-vignette active" style={{ background: `radial-gradient(ellipse at center, transparent ${40 - terrorIntensity * 20}%, rgba(139, 0, 0, ${terrorIntensity * 0.4}) 100%)` }} />
+      )}
 
-      {/* Main Viewport Container (with Camera Shake + Pre-Sabotage Tell) */}
+      {/* Main Viewport */}
       <div
-        className={`w-full max-w-5xl aspect-video relative hud-container hud-cut-corner overflow-hidden flex flex-col shadow-[0_0_50px_rgba(0,243,255,0.2)] border-cyan-400/40 ${screenShake ? 'screen-hit-shake' : ''} ${preSabotageTell ? 'pre-sabotage-tell-active' : ''} ${terminalFlash ? 'terminal-success-flash' : ''}`}
+        className={`w-full max-w-5xl aspect-video relative hud-container hud-cut-corner overflow-hidden flex flex-col ${screenShake ? 'screen-hit-shake' : ''} ${terminalFlash ? 'terminal-success-flash' : ''}`}
+        style={{ borderColor: isDirector ? 'rgba(139, 0, 0, 0.5)' : isDead ? 'rgba(139, 0, 0, 0.8)' : 'rgba(196, 163, 90, 0.3)', boxShadow: isDirector ? '0 0 50px rgba(139, 0, 0, 0.2)' : '0 0 30px rgba(0, 0, 0, 0.5)' }}
         ref={stageRef}
       >
-        {/* HUD Ambient Scan Beam Light Overlay */}
         <div className="hud-scan-beam-overlay" />
-        
-        {/* Layer 0: Top-Down Canvas Map (With Viewcone System) */}
+
+        {/* Canvas Map */}
         <div className="absolute inset-0 w-full h-full z-0">
           <LotCanvas
             allPositions={allPositions}
             localPlayerId={playerId}
+            directorId={directorId}
             players={players}
             nearbyRoom={nearbyRoom}
-            lockedRooms={[]}
-            blackout={blackout}
-            ventSealed={false}
+            completedStationIds={completedStationIds}
+            playerStatuses={playerStatuses}
+            markOccupants={markOccupants}
+            openExitGates={openExitGates}
+            phase={phase}
             facingAngle={facingAngle}
             interactProgress={interactProgress}
             isInteracting={isInteracting}
-            isDirectorSpectating={false}
+            crouchStates={crouchStates}
+            terrorIntensity={terrorIntensity}
           />
         </div>
 
-        {/* Layer 10: Top HUD Navigation Bar */}
+        {/* PA Announcement Bar */}
+        {paMessage && (
+          <div className="absolute top-0 inset-x-0 z-5">
+            <PABar message={paMessage} />
+          </div>
+        )}
+
+        {/* Top HUD */}
         <div className="absolute top-0 inset-x-0 z-10 flex flex-col">
-          <div className="top-hud py-2 px-5 bg-slate-950/90 border-b border-cyan-500/30 backdrop-blur-md flex items-center justify-between">
+          <div className="top-hud py-2 px-5 flex items-center justify-between" style={{ background: 'rgba(10, 8, 6, 0.92)', borderBottom: `2px solid ${isDirector ? 'var(--blood-red)' : 'rgba(196, 163, 90, 0.3)'}` }}>
             <div className="flex items-center gap-3">
-              <h1 className="brand-logo text-lg">
-                SABOTAGE <span>STUDIO</span>
+              <h1 className="brand-logo" style={{ fontSize: '16px' }}>
+                FINAL <span>CUT</span>
               </h1>
-              <div className="flex items-center gap-1.5 font-mono text-[9px] text-rose-500 font-bold">
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                CAM-01 ● LIVE
+              <div className="flex items-center gap-1.5" style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: isDirector ? 'var(--blood-red-bright)' : 'var(--amber)', fontWeight: 700 }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isDirector ? 'var(--blood-red-bright)' : 'var(--amber)', animation: 'pulseGlow 2s infinite' }} />
+                {isDirector ? '🎬 DIRECTOR' : '🎭 TALENT'}
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* Counter Badge with Counter Punch Scale Animation */}
-              <div className={`font-mono text-xs text-amber-400 bg-amber-950/80 border border-amber-400/60 px-3.5 py-1 font-extrabold rounded flex items-center gap-2 shadow-[0_0_12px_rgba(255,183,3,0.3)] transition-all ${counterPunch ? 'counter-punch-active' : ''}`}>
-                <span>⭐ MY POINTS:</span>
-                <span className="text-white text-sm font-black">{myPoints} PTS</span>
-              </div>
+            <div className="flex items-center gap-4">
+              <StationTracker completedCount={stationsCompleted} total={layout.stationsRequired} />
 
-              <div className="font-mono text-xs text-slate-300 hidden sm:block">
-                OPERATOR: <b className="text-cyan-400">{playerName}</b> {isHost ? '👑' : ''}
+              {phase === 'pre-production' && (
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--amber)', fontWeight: 700, letterSpacing: '2px' }}>
+                  {preProductionTimer}s
+                </div>
+              )}
+
+              {phase === 'wrap-up' && (
+                <span style={{ fontFamily: 'var(--font-head)', fontSize: '12px', color: 'var(--exit-green)', letterSpacing: '2px', animation: 'pulseGlow 1s infinite' }}>
+                  EXIT DOORS POWERED
+                </span>
+              )}
+
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }} className="hidden sm:block">
+                {playerName}
               </div>
             </div>
           </div>
-
-          {/* Control Swap Active Warning Bar */}
-          {controlSwapInfo && (
-            <ControlSwapBanner
-              targetName={controlSwapInfo.targetName}
-              remainingSecs={controlSwapInfo.remainingSecs}
-            />
-          )}
         </div>
 
-        {/* Layer 10: Bottom Controls Bar & Action Prompts */}
+        {/* Director Ability Panel */}
+        {isDirector && showAbilityPanel && phase === 'rolling' && directorBroadcasterRef.current && (
+          <DirectorAbilityPanel
+            onUseAbility={handleUseAbility}
+            getCooldownRemaining={(id) => directorBroadcasterRef.current.getCooldownRemaining(id)}
+            targetTalent={chaseTarget}
+            talents={talents}
+          />
+        )}
+
+        {/* Bottom Controls & Interaction Prompts */}
         <div className="absolute bottom-3 inset-x-4 z-10 flex items-center justify-between pointer-events-none">
-          <div className="pointer-events-auto bg-slate-950/90 border border-slate-800 backdrop-blur-md px-3.5 py-1.5 font-mono text-[10px] text-slate-400 flex items-center gap-3 rounded-sm shadow-md">
-            <span>NAV: <b className="text-white">WASD / ARROWS</b></span>
-            <span>TASK TERMINAL: <b className="text-cyan-400">HOLD KEY E</b></span>
+          <div className="pointer-events-auto" style={{ background: 'rgba(10, 8, 6, 0.9)', border: '1px solid var(--panel-border)', padding: '6px 12px', fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-muted)' }}>
+            {isDirector ? (
+              <span>WASD: Move · E: Pick up / Mount Mark · TAB: Toggle Kit</span>
+            ) : (
+              <span>WASD: Move · HOLD E: Action · SHIFT: Crouch</span>
+            )}
           </div>
 
-          {/* Station Enter Action Prompt with Hold Progress Ring */}
-          {nearbyRoom && nearbyRoom.stationId && !activeStationId && (
-            <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 bottom-0">
-              <button
-                onMouseDown={() => {
-                  setIsInteracting(true);
-                }}
-                onMouseUp={() => setIsInteracting(false)}
-                className="btn-cyan font-head text-xs tracking-wider py-2.5 px-6 shadow-[0_0_30px_rgba(0,243,255,0.7)] flex items-center gap-3"
-              >
-                <span>⚡ TERMINAL: {nearbyRoom.name.toUpperCase()}</span>
-                <span className="bg-black text-cyan-400 px-2 py-0.5 font-mono text-[11px] font-bold border border-cyan-400">
+          {/* Interaction Prompts */}
+          <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 bottom-0">
+            {/* Director: Pick Up Downed */}
+            {isDirector && nearbyTargetPlayer?.action === 'pickup' && !carriedTalentId && (
+              <button className="fire-button" style={{ fontSize: '12px', padding: '10px 20px' }}>
+                📦 PRESS E TO PICK UP {players.find((p) => p.id === nearbyTargetPlayer.id)?.name?.toUpperCase()}
+              </button>
+            )}
+
+            {/* Director: Mount on Mark */}
+            {isDirector && nearbyMark && carriedTalentId && (
+              <button className="fire-button" style={{ fontSize: '12px', padding: '10px 20px' }}>
+                ⛓️ PRESS E TO MOUNT ON {nearbyMark.label?.toUpperCase()}
+              </button>
+            )}
+
+            {/* Talent: Station Prompt */}
+            {!isDirector && nearbyRoom?.stationId && !activeStationId && !completedStationIds.has(nearbyRoom.stationId) && phase === 'rolling' && (
+              <button className="btn-amber" style={{ fontSize: '12px', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🎬 {nearbyRoom.name?.toUpperCase()}</span>
+                <span style={{ background: 'rgba(10, 8, 6, 0.8)', color: 'var(--amber)', padding: '2px 8px', fontFamily: 'var(--font-mono)', fontSize: '10px', border: '1px solid var(--amber)' }}>
                   {isInteracting ? `${Math.round(interactProgress * 100)}%` : 'HOLD E'}
                 </span>
               </button>
-            </div>
-          )}
+            )}
 
-          {/* Floating UI Action Buttons */}
-          <div className="pointer-events-auto flex items-center gap-2">
-            <button
-              onClick={() => setShowRoster((prev) => !prev)}
-              className={`icon-btn font-mono text-xs flex items-center gap-1.5 ${showRoster ? 'border-cyan-400 bg-cyan-500/20 text-white' : ''}`}
-            >
-              📊 RANKINGS ({players.length})
-            </button>
+            {/* Talent: Revive / Rescue Prompt */}
+            {!isDirector && nearbyTargetPlayer && (nearbyTargetPlayer.action === 'revive' || nearbyTargetPlayer.action === 'rescue') && (
+              <button className="btn-amber" style={{ fontSize: '12px', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>❤️ {nearbyTargetPlayer.action.toUpperCase()} {players.find((p) => p.id === nearbyTargetPlayer.id)?.name?.toUpperCase()}</span>
+                <span style={{ background: 'rgba(10, 8, 6, 0.8)', color: 'var(--amber)', padding: '2px 8px', fontFamily: 'var(--font-mono)', fontSize: '10px', border: '1px solid var(--amber)' }}>
+                  {isInteracting ? `${Math.round(interactProgress * 100)}%` : 'HOLD E'}
+                </span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setShowSabotageShop((prev) => !prev)}
-              className="fire-button font-mono text-xs py-2 px-4 bg-rose-600 text-white font-bold flex items-center gap-1.5 shadow-[0_0_20px_rgba(255,0,85,0.5)]"
-            >
-              ⚡ SABOTAGE SHOP ({myPoints} PTS)
-            </button>
+            {/* Talent: Exit Gate Prompt */}
+            {!isDirector && phase === 'wrap-up' && nearbyGate && !openExitGates.has(nearbyGate.id) && (
+              <button className="btn-green" style={{ fontSize: '12px', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🚪 POWER OPEN {nearbyGate.label?.toUpperCase()}</span>
+                <span style={{ background: 'rgba(10, 8, 6, 0.8)', color: '#fff', padding: '2px 8px', fontFamily: 'var(--font-mono)', fontSize: '10px', border: '1px solid #fff' }}>
+                  {isInteracting ? `${Math.round(interactProgress * 100)}%` : 'HOLD E'}
+                </span>
+              </button>
+            )}
           </div>
-        </div>
 
-        {/* Layer 30: Floating Leaderboard Panel (Animated Re-ordering) */}
-        {showRoster && (
-          <div className="absolute top-16 right-4 z-30 w-72 hud-container hud-cut-corner p-0 shadow-[0_0_30px_rgba(0,243,255,0.25)] animate-fadeIn">
-            <div className="container-header py-2 px-3 flex items-center justify-between">
-              <div className="container-title text-xs font-mono text-cyan-400">
-                🏆 LIVE OPERATOR RANKINGS
-              </div>
-              <button onClick={() => setShowRoster(false)} className="text-slate-400 hover:text-white text-xs">
-                ✕
+          {/* Director toggle */}
+          {isDirector && (
+            <div className="pointer-events-auto flex items-center gap-2">
+              <button
+                onClick={() => setShowAbilityPanel((prev) => !prev)}
+                className="icon-btn"
+                style={{ fontSize: '10px', borderColor: showAbilityPanel ? 'var(--blood-red)' : 'var(--panel-border)' }}
+              >
+                🎬 {showAbilityPanel ? 'HIDE' : 'SHOW'} KIT
               </button>
             </div>
-            <div className="p-3 max-h-56 overflow-y-auto">
-              <ul className="flex flex-col gap-2">
-                {[...players]
-                  .sort((a, b) => (scores[b.id] ?? 0) - (scores[a.id] ?? 0))
-                  .map((p, rank) => (
-                    <li
-                      key={p.id}
-                      className={`p-2.5 bg-slate-900/90 border flex items-center justify-between text-xs font-mono rounded transition-all duration-300 ${p.id === playerId ? 'border-cyan-400 text-white bg-cyan-950/40 shadow-[0_0_10px_rgba(0,243,255,0.2)]' : 'border-slate-800 text-slate-300'}`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className={`font-extrabold w-5 text-center ${rank === 0 ? 'text-amber-400' : rank === 1 ? 'text-slate-300' : rank === 2 ? 'text-amber-600' : 'text-slate-500'}`}>
-                          #{rank + 1}
-                        </span>
-                        <div className={`w-3 h-3 rounded-full bg-current ${PLAYER_COLOURS[rank % PLAYER_COLOURS.length]}`} />
-                        <span className="truncate max-w-[100px] font-bold">{p.name}</span>
-                        {p.id === playerId && <span className="text-[9px] text-cyan-400 font-bold">(YOU)</span>}
-                      </div>
-                      <span className="font-extrabold text-amber-400">{scores[p.id] ?? 0} PTS</span>
-                    </li>
-                  ))}
-              </ul>
+          )}
+        </div>
+
+        {/* Pre-Production Overlay */}
+        {phase === 'pre-production' && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ background: 'rgba(10, 8, 6, 0.7)', pointerEvents: 'none' }}>
+            <div className="text-center">
+              <h2 style={{ fontFamily: 'var(--font-head)', fontSize: '36px', color: 'var(--amber)', letterSpacing: '6px', textShadow: '0 0 20px var(--amber-glow)', marginBottom: '16px' }}>
+                QUIET ON SET
+              </h2>
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--text-dim)', letterSpacing: '2px' }}>
+                {isDirector ? 'YOU ARE SEALED IN THE BOOTH' : 'SCATTER BEFORE THE DIRECTOR IS RELEASED'}
+              </p>
+              <p style={{ fontFamily: 'var(--font-head)', fontSize: '48px', color: 'var(--blood-red-bright)', marginTop: '12px', textShadow: '0 0 30px var(--blood-glow)' }}>
+                {preProductionTimer}
+              </p>
             </div>
           </div>
         )}
 
-        {/* Layer 40: Station Minigame Terminal Overlay */}
+        {/* Station Overlay */}
         {activeStationId && (
-          <div className="absolute inset-0 z-40 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
-            <div className="hud-container hud-cut-corner max-w-xl w-full max-h-[92%] flex flex-col p-0 border-cyan-400/80 shadow-[0_0_60px_rgba(0,243,255,0.4)] relative" ref={stationElRef}>
+          <div className="absolute inset-0 z-40 flex items-center justify-center p-4 animate-fadeIn" style={{ background: 'rgba(10, 8, 6, 0.9)', backdropFilter: 'blur(8px)' }}>
+            <div className="hud-container hud-cut-corner max-w-xl w-full max-h-[92%] flex flex-col p-0" style={{ borderColor: 'rgba(196, 163, 90, 0.5)', boxShadow: '0 0 40px var(--amber-glow)' }} ref={stationElRef}>
               <div className="container-header py-2.5 px-4 flex items-center justify-between">
-                <div className="container-title font-mono text-xs text-cyan-400">
-                  <span className="status-indicator" />
-                  STATION TERMINAL // {activeStationId.toUpperCase()}
+                <div className="container-title" style={{ fontSize: '12px', color: 'var(--amber)' }}>
+                  <span className="status-indicator" style={{ background: 'var(--amber)', boxShadow: '0 0 10px var(--amber)' }} />
+                  SCENE // {activeStationId.toUpperCase()}
                 </div>
-                <button
-                  onClick={() => setActiveStationId(null)}
-                  className="icon-btn font-mono text-xs border-cyan-400 text-cyan-400 hover:bg-cyan-400 hover:text-black font-bold"
-                >
-                  ✕ EXIT TERMINAL [ESC]
+                <button onClick={() => setActiveStationId(null)} className="icon-btn" style={{ fontSize: '10px' }}>
+                  ✕ EXIT [ESC]
                 </button>
               </div>
-              <div className="p-4 flex-1 overflow-auto flex flex-col items-center justify-center bg-slate-950/70">
+              <div className="p-4 flex-1 overflow-auto flex flex-col items-center justify-center" style={{ background: 'rgba(10, 8, 6, 0.8)' }}>
                 {StationComp && (
                   <StationComp
                     isControlling={true}
@@ -842,22 +1186,6 @@ export default function Game({
           </div>
         )}
       </div>
-
-      {/* Layer 45: Sabotage Shop Modal */}
-      {showSabotageShop && (
-        <SabotageShopModal
-          points={myPoints}
-          players={players}
-          localPlayerId={playerId}
-          onFireSabotage={handleFireSabotage}
-          onClose={() => setShowSabotageShop(false)}
-        />
-      )}
-
-      {/* Layer 50: Studio Crisis emergency modal */}
-      {crisis && (
-        <StudioCrisisOverlay type={crisis} onDismiss={() => setCrisis(null)} />
-      )}
     </div>
   );
 }
