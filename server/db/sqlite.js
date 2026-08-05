@@ -6,10 +6,15 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const db = new Database(join(__dirname, '../../dev.db'));
 
-// Enable WAL mode for better concurrent read performance
-db.pragma('journal_mode = WAL');
+let db;
+if (process.env.NODE_ENV === 'test') {
+  db = new Database(':memory:');
+} else {
+  db = new Database(join(__dirname, '../../dev.db'));
+  // Enable WAL mode for better concurrent read performance (not supported in memory db well)
+  db.pragma('journal_mode = WAL');
+}
 
 // ---------------------------------------------------------------------------
 // Schema bootstrap
