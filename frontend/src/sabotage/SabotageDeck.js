@@ -71,6 +71,8 @@ export function createSabotageBroadcaster(
   onLocalSabotageApply = null,
   onLocalControlSwap = null
 ) {
+  const playersMap = new Map(players.map((p) => [p.id, p]));
+
   /**
    * Execute a sabotage purchase.
    * Returns true if successful (buyer had enough points).
@@ -92,7 +94,7 @@ export function createSabotageBroadcaster(
     setScores(updatedScores);
     broadcast({ type: 'score-update', payload: { scores: updatedScores } });
 
-    const buyerName = players.find((p) => p.id === buyerId)?.name ?? 'Someone';
+    const buyerName = playersMap.get(buyerId)?.name ?? 'Someone';
 
     // Handle Control Swap special sabotage
     if (effectId === 'controlSwap' || effectId === 'earlySwap') {
@@ -103,8 +105,8 @@ export function createSabotageBroadcaster(
       }
       if (!targetId) return false;
 
-      const playerA = players.find((p) => p.id === buyerId);
-      const playerB = players.find((p) => p.id === targetId);
+      const playerA = playersMap.get(buyerId);
+      const playerB = playersMap.get(targetId);
 
       const swapPayload = {
         playerAId: buyerId,
