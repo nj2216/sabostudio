@@ -86,7 +86,11 @@ export const bleedThrough = {
     // Animate static noise
     const ctx = staticCanvas.getContext('2d');
     let animId;
-    function drawStatic() {
+
+    // Pre-generate static frames to avoid recalculating every frame
+    const numFrames = 8;
+    const staticFrames = [];
+    for (let f = 0; f < numFrames; f++) {
       const imgData = ctx.createImageData(200, 120);
       for (let i = 0; i < imgData.data.length; i += 4) {
         const v = Math.random() * 255;
@@ -95,7 +99,13 @@ export const bleedThrough = {
         imgData.data[i + 2] = v;
         imgData.data[i + 3] = 255;
       }
-      ctx.putImageData(imgData, 0, 0);
+      staticFrames.push(imgData);
+    }
+
+    let frameIdx = 0;
+    function drawStatic() {
+      ctx.putImageData(staticFrames[frameIdx], 0, 0);
+      frameIdx = (frameIdx + 1) % numFrames;
       animId = requestAnimationFrame(drawStatic);
     }
     drawStatic();
