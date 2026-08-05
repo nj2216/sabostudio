@@ -41,15 +41,38 @@ export const fakePopup = {
       box-shadow: 0 8px 24px rgba(0,0,0,0.6);
       font-family: system-ui, sans-serif;
     `;
-    dialog.innerHTML = `
-      <p style="font-size:0.8rem;color:#aaa;margin:0 0 4px">System Notification</p>
-      <p style="font-size:1rem;font-weight:bold;color:#fff;margin:0 0 8px">${msg.title}</p>
-      <p style="font-size:0.85rem;color:#ccc;margin:0 0 16px">${msg.body}</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button id="sabo-dismiss" style="padding:6px 14px;background:#444;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem">Cancel</button>
-        <button id="sabo-confirm" style="padding:6px 14px;background:#0078d4;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem">${msg.btn}</button>
-      </div>
-    `;
+    const p1 = document.createElement('p');
+    p1.style.cssText = 'font-size:0.8rem;color:#aaa;margin:0 0 4px';
+    p1.textContent = 'System Notification';
+
+    const p2 = document.createElement('p');
+    p2.style.cssText = 'font-size:1rem;font-weight:bold;color:#fff;margin:0 0 8px';
+    p2.textContent = msg.title;
+
+    const p3 = document.createElement('p');
+    p3.style.cssText = 'font-size:0.85rem;color:#ccc;margin:0 0 16px';
+    p3.textContent = msg.body;
+
+    const btnContainer = document.createElement('div');
+    btnContainer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+    const btnCancel = document.createElement('button');
+    btnCancel.id = 'sabo-dismiss';
+    btnCancel.style.cssText = 'padding:6px 14px;background:#444;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem';
+    btnCancel.textContent = 'Cancel';
+
+    const btnConfirm = document.createElement('button');
+    btnConfirm.id = 'sabo-confirm';
+    btnConfirm.style.cssText = 'padding:6px 14px;background:#0078d4;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem';
+    btnConfirm.textContent = msg.btn;
+
+    btnContainer.appendChild(btnCancel);
+    btnContainer.appendChild(btnConfirm);
+
+    dialog.appendChild(p1);
+    dialog.appendChild(p2);
+    dialog.appendChild(p3);
+    dialog.appendChild(btnContainer);
 
     overlay.appendChild(dialog);
     stationEl.style.position = 'relative';
