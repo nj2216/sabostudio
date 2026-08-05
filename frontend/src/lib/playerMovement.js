@@ -35,7 +35,7 @@ const SPEED_DOWNED = 1;     // 25% of Talent
 // Helpers
 // ---------------------------------------------------------------------------
 
-function isWalkable(px, py, walkableRects) {
+export function isWalkable(px, py, walkableRects) {
   return walkableRects.some(
     (r) => px >= r.x1 && px <= r.x2 && py >= r.y1 && py <= r.y2,
   );
