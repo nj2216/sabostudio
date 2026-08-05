@@ -61,24 +61,28 @@ app.post('/api/rooms/create', async (req, res) => {
   }
 
   let code;
+  const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
   for (let attempt = 0; attempt < 5; attempt++) {
-    code = generateRoomCode();
-    const existing = await db.rooms.findByCode(code);
-    if (!existing) break;
-    code = null;
+    const candidateCode = generateRoomCode();
+    try {
+      await db.rooms.create({ code: candidateCode, hostPeerId, status: 'waiting', expiresAt });
+      code = candidateCode;
+      break;
+    } catch (err) {
+      // Catch unique constraint violations.
+      // SQLite throws err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY'
+      // Supabase (PostgreSQL) throws err.code === '23505'
+      if (err.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' || err.code === '23505') {
+        continue; // Try again
+      }
+      console.error('DB insert room error:', err);
+      return res.status(500).json({ error: 'Failed to create room' });
+    }
   }
 
   if (!code) {
     return res.status(500).json({ error: 'Failed to generate a unique room code. Please try again.' });
-  }
-
-  const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-
-  try {
-    await db.rooms.create({ code, hostPeerId, status: 'waiting', expiresAt });
-  } catch (err) {
-    console.error('DB insert room error:', err);
-    return res.status(500).json({ error: 'Failed to create room' });
   }
 
   const playerId = nanoid();
