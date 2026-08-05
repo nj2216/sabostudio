@@ -57,18 +57,37 @@ export const adAvalanche = {
         z-index: ${101 + i};
       `;
 
-      pop.innerHTML = `
-        <div style="background: ${ad.bg}; color: #fff; font-weight: bold; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center;">
-          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;">${ad.title}</span>
-          <button class="ad-close-btn" style="background: #c0c0c0; border: 1px solid #fff; border-right-color: #404040; border-bottom-color: #404040; color: #000; width: 16px; height: 14px; font-size: 9px; cursor: pointer; font-weight: bold; line-height: 1;">✕</button>
-        </div>
-        <div style="padding: 10px; background: #c0c0c0;">
-          <p style="margin: 0 0 10px; font-weight: bold;">${ad.body}</p>
-          <button style="background: #c0c0c0; border: 2px solid #fff; border-right-color: #404040; border-bottom-color: #404040; width: 100%; padding: 4px; font-weight: bold; cursor: pointer; font-size: 10px;">${ad.btn}</button>
-        </div>
-      `;
+      const header = document.createElement('div');
+      header.style.cssText = `background: ${ad.bg}; color: #fff; font-weight: bold; padding: 3px 6px; display: flex; justify-content: space-between; align-items: center;`;
 
-      const closeBtn = pop.querySelector('.ad-close-btn');
+      const titleSpan = document.createElement('span');
+      titleSpan.style.cssText = 'white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px;';
+      titleSpan.textContent = ad.title;
+
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'ad-close-btn';
+      closeBtn.style.cssText = 'background: #c0c0c0; border: 1px solid #fff; border-right-color: #404040; border-bottom-color: #404040; color: #000; width: 16px; height: 14px; font-size: 9px; cursor: pointer; font-weight: bold; line-height: 1;';
+      closeBtn.textContent = '✕';
+
+      header.appendChild(titleSpan);
+      header.appendChild(closeBtn);
+
+      const bodyDiv = document.createElement('div');
+      bodyDiv.style.cssText = 'padding: 10px; background: #c0c0c0;';
+
+      const bodyP = document.createElement('p');
+      bodyP.style.cssText = 'margin: 0 0 10px; font-weight: bold;';
+      bodyP.textContent = ad.body;
+
+      const actionBtn = document.createElement('button');
+      actionBtn.style.cssText = 'background: #c0c0c0; border: 2px solid #fff; border-right-color: #404040; border-bottom-color: #404040; width: 100%; padding: 4px; font-weight: bold; cursor: pointer; font-size: 10px;';
+      actionBtn.textContent = ad.btn;
+
+      bodyDiv.appendChild(bodyP);
+      bodyDiv.appendChild(actionBtn);
+
+      pop.appendChild(header);
+      pop.appendChild(bodyDiv);
       closeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         pop.remove();
