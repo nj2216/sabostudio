@@ -737,9 +737,10 @@ export default function Game({
 
       const dx = dirPos.x - myPos.x;
       const dy = dirPos.y - myPos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const distSq = dx * dx + dy * dy;
 
-      if (dist < TERROR_RADIUS) {
+      if (distSq < TERROR_RADIUS * TERROR_RADIUS) {
+        const dist = Math.sqrt(distSq);
         setTerrorIntensity(1 - (dist / TERROR_RADIUS));
       } else {
         setTerrorIntensity(0);
