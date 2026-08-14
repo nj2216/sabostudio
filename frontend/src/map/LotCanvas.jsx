@@ -10,7 +10,7 @@
  * Additional elements: chalk Marks, Exit Gates, Director's Booth, terror radius
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import layout from './lotLayout.json';
 
 const { mapWidth, mapHeight, rooms, corridors, chalkMarks, exitGates } = layout;
@@ -122,8 +122,19 @@ export default function LotCanvas({
   const isDirector = localPlayerId === directorId;
   const isSpectator = playerStatuses[localPlayerId] === 'wrapped' || playerStatuses[localPlayerId] === 'crew';
   const showFullMap = isDirector || isSpectator;
-  const playerIndex = (id) => players.findIndex((p) => p.id === id);
-  const nameOf = (id) => players.find((p) => p.id === id)?.name ?? id;
+
+  const playerDicts = useMemo(() => {
+    const map = {};
+    const indices = {};
+    players.forEach((p, i) => {
+      map[p.id] = p;
+      indices[p.id] = i;
+    });
+    return { map, indices };
+  }, [players]);
+
+  const playerIndex = (id) => playerDicts.indices[id] ?? -1;
+  const nameOf = (id) => playerDicts.map[id]?.name ?? id;
 
   const localPos = allPositions[localPlayerId] ?? { x: mapWidth / 2, y: mapHeight / 2 };
 
