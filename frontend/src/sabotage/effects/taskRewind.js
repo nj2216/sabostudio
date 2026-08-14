@@ -33,15 +33,22 @@ export const taskRewind = {
       pointer-events: none;
     `;
 
-    overlay.innerHTML = `
-      <span style="font-size: 3rem;" class="animate-spin">⏪</span>
-      <h2 style="color: #60a5fa; font-family: monospace; font-weight: 900; font-size: 1.1rem; margin: 8px 0 4px;">
-        ⏪ TASK REWOUND!
-      </h2>
-      <p style="color: #94a3b8; font-family: monospace; font-size: 0.75rem; margin: 0;">
-        -50% PROGRESS DENIAL APPLIED!
-      </p>
-    `;
+    const span = document.createElement('span');
+    span.style.cssText = 'font-size: 3rem;';
+    span.className = 'animate-spin';
+    span.textContent = '⏪';
+
+    const h2 = document.createElement('h2');
+    h2.style.cssText = 'color: #60a5fa; font-family: monospace; font-weight: 900; font-size: 1.1rem; margin: 8px 0 4px;';
+    h2.textContent = '⏪ TASK REWOUND!';
+
+    const p = document.createElement('p');
+    p.style.cssText = 'color: #94a3b8; font-family: monospace; font-size: 0.75rem; margin: 0;';
+    p.textContent = '-50% PROGRESS DENIAL APPLIED!';
+
+    overlay.appendChild(span);
+    overlay.appendChild(h2);
+    overlay.appendChild(p);
 
     el.style.position = 'relative';
     el.appendChild(overlay);
