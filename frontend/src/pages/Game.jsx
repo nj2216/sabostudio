@@ -350,6 +350,8 @@ export default function Game({
   const isDirector = playerId === directorId;
   const role = isDirector ? 'director' : 'talent';
   const talents = useMemo(() => players.filter((p) => p.id !== directorId), [players, directorId]);
+  const playersById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+  const playersByPeerId = useMemo(() => new Map(players.map((p) => [p.peerId, p])), [players]);
 
   // ── Game Phase State ────────────────────────────────────────────────────
   const [phase, setPhase] = useState('pre-production');
@@ -489,7 +491,7 @@ export default function Game({
             delete updatedMarks[markId];
             nextStatuses[markData.talentId] = 'wrapped';
 
-            const deadTalentName = players.find((p) => p.id === markData.talentId)?.name || 'Talent';
+            const deadTalentName = playersById.get(markData.talentId)?.name || 'Talent';
             showPA(`"That's a wrap on ${deadTalentName}!"`, 4000);
           } else {
             updatedMarks[markId] = { ...markData, remainingSecs: nextSecs };
@@ -576,7 +578,7 @@ export default function Game({
             if (isHost && broadcast) broadcast({ type: 'talent-status-update', payload: { statuses: next } });
             return next;
           });
-          showToast(`📦 Picked up ${players.find((p) => p.id === targetId)?.name}`);
+          showToast(`📦 Picked up ${playersById.get(targetId)?.name}`);
           setTimeout(() => { eKeyDownRef.current = false; }, 300);
           return;
         }
@@ -594,7 +596,7 @@ export default function Game({
             if (isHost && broadcast) broadcast({ type: 'talent-status-update', payload: { statuses: next } });
             return next;
           });
-          showToast(`⛓️ Bound ${players.find((p) => p.id === targetId)?.name} to ${nearbyMark.label}!`);
+          showToast(`⛓️ Bound ${playersById.get(targetId)?.name} to ${nearbyMark.label}!`);
           setTimeout(() => { eKeyDownRef.current = false; }, 300);
           return;
         }
@@ -615,7 +617,7 @@ export default function Game({
         // B. Revive downed teammate or Rescue from Mark
         if (nearbyTargetPlayer && (nearbyTargetPlayer.action === 'revive' || nearbyTargetPlayer.action === 'rescue')) {
           const targetId = nearbyTargetPlayer.id;
-          const targetName = players.find((p) => p.id === targetId)?.name;
+          const targetName = playersById.get(targetId)?.name;
           const actionText = nearbyTargetPlayer.action === 'revive' ? 'Reviving' : 'Rescuing';
 
           startHoldAction(HOLD_ACTION_DURATION, () => {
@@ -788,7 +790,7 @@ export default function Game({
     if (!isHost || !onMessage) return;
 
     onMessage('player-move', (conn, payload) => {
-      const canonicalSenderId = players.find((p) => p.peerId === conn.peer)?.id;
+      const canonicalSenderId = playersByPeerId.get(conn.peer)?.id;
       if (!canonicalSenderId) return;
       const pos = payload?.pos || payload;
       if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
@@ -797,7 +799,7 @@ export default function Game({
     });
 
     onMessage('task-complete', (conn, payload) => {
-      const canonicalId = payload?.playerId || players.find((p) => p.peerId === conn.peer)?.id;
+      const canonicalId = payload?.playerId || playersByPeerId.get(conn.peer)?.id;
       const stationId = payload?.stationId;
       if (canonicalId && stationId) handleStationCompleted(stationId, canonicalId);
     });
@@ -875,7 +877,7 @@ export default function Game({
       const newCount = updated.size;
       setStationsCompleted(newCount);
 
-      const completerName = players.find((p) => p.id === completerId)?.name || 'Someone';
+      const completerName = playersById.get(completerId)?.name || 'Someone';
       showPA(`"Cut — print it!" Scene completed by ${completerName}.`, 4000);
 
       if (isHost && broadcast) {
@@ -1088,7 +1090,7 @@ export default function Game({
             {/* Director: Pick Up Downed */}
             {isDirector && nearbyTargetPlayer?.action === 'pickup' && !carriedTalentId && (
               <button className="fire-button" style={{ fontSize: '12px', padding: '10px 20px' }}>
-                📦 PRESS E TO PICK UP {players.find((p) => p.id === nearbyTargetPlayer.id)?.name?.toUpperCase()}
+                📦 PRESS E TO PICK UP {playersById.get(nearbyTargetPlayer.id)?.name?.toUpperCase()}
               </button>
             )}
 
@@ -1112,7 +1114,7 @@ export default function Game({
             {/* Talent: Revive / Rescue Prompt */}
             {!isDirector && nearbyTargetPlayer && (nearbyTargetPlayer.action === 'revive' || nearbyTargetPlayer.action === 'rescue') && (
               <button className="btn-amber" style={{ fontSize: '12px', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>❤️ {nearbyTargetPlayer.action.toUpperCase()} {players.find((p) => p.id === nearbyTargetPlayer.id)?.name?.toUpperCase()}</span>
+                <span>❤️ {nearbyTargetPlayer.action.toUpperCase()} {playersById.get(nearbyTargetPlayer.id)?.name?.toUpperCase()}</span>
                 <span style={{ background: 'rgba(10, 8, 6, 0.8)', color: 'var(--amber)', padding: '2px 8px', fontFamily: 'var(--font-mono)', fontSize: '10px', border: '1px solid var(--amber)' }}>
                   {isInteracting ? `${Math.round(interactProgress * 100)}%` : 'HOLD E'}
                 </span>
