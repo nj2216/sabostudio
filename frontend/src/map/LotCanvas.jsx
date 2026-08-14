@@ -172,9 +172,9 @@ export default function LotCanvas({
 
   // Viewcone SVG path (Talent only when alive)
   const polygonPoints = !showFullMap ? computeRaycastPolygon(localPos, smoothAngle) : [];
-  const viewConeSvgPath = polygonPoints.reduce((acc, pt, idx) => {
-    return `${acc} ${idx === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
-  }, '') + (polygonPoints.length > 0 ? ' Z' : '');
+  const viewConeSvgPath = polygonPoints.length > 0
+    ? polygonPoints.map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ') + ' Z'
+    : '';
 
   return (
     <div className="relative overflow-hidden w-full h-full select-none" style={{ background: '#080604' }}>
