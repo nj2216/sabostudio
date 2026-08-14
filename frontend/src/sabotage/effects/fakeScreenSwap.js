@@ -30,17 +30,27 @@ export const fakeScreenSwap = {
       animation: pulse 0.4s infinite alternate;
     `;
 
-    overlay.innerHTML = `
-      <div style="background: #0f172a; border: 2px solid #ef4444; border-radius: 12px; padding: 20px 30px; text-align: center; box-shadow: 0 0 30px rgba(239,68,68,0.8);">
-        <span style="font-size: 3rem; display: block; margin-bottom: 8px;" class="animate-bounce">🔄</span>
-        <h2 style="color: #ef4444; font-family: monospace; font-weight: 900; font-size: 1.2rem; margin: 0 0 6px; text-transform: uppercase;">
-          ⚠️ CONTROL SWAP INITIATED!
-        </h2>
-        <p style="color: #cbd5e1; font-family: monospace; font-size: 0.8rem; margin: 0;">
-          YOU ARE NOW CONTROLLING OPPONENT VIEWPORT!
-        </p>
-      </div>
-    `;
+    const container = document.createElement('div');
+    container.style.cssText = 'background: #0f172a; border: 2px solid #ef4444; border-radius: 12px; padding: 20px 30px; text-align: center; box-shadow: 0 0 30px rgba(239,68,68,0.8);';
+
+    const icon = document.createElement('span');
+    icon.style.cssText = 'font-size: 3rem; display: block; margin-bottom: 8px;';
+    icon.className = 'animate-bounce';
+    icon.textContent = '🔄';
+
+    const title = document.createElement('h2');
+    title.style.cssText = 'color: #ef4444; font-family: monospace; font-weight: 900; font-size: 1.2rem; margin: 0 0 6px; text-transform: uppercase;';
+    title.textContent = '⚠️ CONTROL SWAP INITIATED!';
+
+    const subtitle = document.createElement('p');
+    subtitle.style.cssText = 'color: #cbd5e1; font-family: monospace; font-size: 0.8rem; margin: 0;';
+    subtitle.textContent = 'YOU ARE NOW CONTROLLING OPPONENT VIEWPORT!';
+
+    container.appendChild(icon);
+    container.appendChild(title);
+    container.appendChild(subtitle);
+
+    overlay.appendChild(container);
 
     el.style.position = 'relative';
     el.appendChild(overlay);
