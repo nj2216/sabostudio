@@ -41,15 +41,38 @@ export const fakePopup = {
       box-shadow: 0 8px 24px rgba(0,0,0,0.6);
       font-family: system-ui, sans-serif;
     `;
-    dialog.innerHTML = `
-      <p style="font-size:0.8rem;color:#aaa;margin:0 0 4px">System Notification</p>
-      <p style="font-size:1rem;font-weight:bold;color:#fff;margin:0 0 8px">${msg.title}</p>
-      <p style="font-size:0.85rem;color:#ccc;margin:0 0 16px">${msg.body}</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button id="sabo-dismiss" style="padding:6px 14px;background:#444;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem">Cancel</button>
-        <button id="sabo-confirm" style="padding:6px 14px;background:#0078d4;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem">${msg.btn}</button>
-      </div>
-    `;
+    const notificationP = document.createElement('p');
+    notificationP.style.cssText = 'font-size:0.8rem;color:#aaa;margin:0 0 4px';
+    notificationP.textContent = 'System Notification';
+
+    const titleP = document.createElement('p');
+    titleP.style.cssText = 'font-size:1rem;font-weight:bold;color:#fff;margin:0 0 8px';
+    titleP.textContent = msg.title;
+
+    const bodyP = document.createElement('p');
+    bodyP.style.cssText = 'font-size:0.85rem;color:#ccc;margin:0 0 16px';
+    bodyP.textContent = msg.body;
+
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+
+    const dismissBtn = document.createElement('button');
+    dismissBtn.id = 'sabo-dismiss';
+    dismissBtn.style.cssText = 'padding:6px 14px;background:#444;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem';
+    dismissBtn.textContent = 'Cancel';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.id = 'sabo-confirm';
+    confirmBtn.style.cssText = 'padding:6px 14px;background:#0078d4;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:0.8rem';
+    confirmBtn.textContent = msg.btn;
+
+    buttonContainer.appendChild(dismissBtn);
+    buttonContainer.appendChild(confirmBtn);
+
+    dialog.appendChild(notificationP);
+    dialog.appendChild(titleP);
+    dialog.appendChild(bodyP);
+    dialog.appendChild(buttonContainer);
 
     overlay.appendChild(dialog);
     stationEl.style.position = 'relative';
